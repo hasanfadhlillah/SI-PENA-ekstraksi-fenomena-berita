@@ -49,8 +49,9 @@ def test_single():
             skor = art["skor_relevansi"]
             badge = "🟢" if skor >= 8 else "🟡"
             print(f"  {badge} [{i}] Skor {skor}/10")
-            print(f"      Judul  : {art['judul'][:70]}")
-            print(f"      URL    : {art['url'][:70]}")
+            # PERBAIKAN: Hapus [:70] agar teks tampil utuh
+            print(f"      Judul  : {art['judul']}")
+            print(f"      URL    : {art['url']}")
             print(f"      Alasan : {art['alasan_singkat']}")
             print(f"      📊 Data angka: {art['ada_data_angka']} | Perbandingan: {art['ada_perbandingan_waktu']}")
             print()
