@@ -14,28 +14,30 @@ from .query_expander import dapatkan_keywords
 from .searcher       import cari_berita_multi_sumber
 from .fetcher        import fetch_parallel
 from .screener       import screening_batch
-from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya, 
+from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya,
                               buat_pesan_anti_buntu, siapkan_keyword_fallback)
 
-# Di bagian ATAS file pipeline.py
 load_dotenv()
 
-GROQ_KEY     = os.environ.get("GROQ_API_KEY", "")
-GEMINI_KEY   = os.environ.get("GEMINI_API_KEY", "")
+GROQ_KEY     = os.environ.get("GROQ_API_KEY",     "")
+GEMINI_KEY   = os.environ.get("GEMINI_API_KEY",   "")
 CEREBRAS_KEY = os.environ.get("CEREBRAS_API_KEY", "")
+MISTRAL_KEY  = os.environ.get("MISTRAL_API_KEY",  "")  # ← BARU
 
 API_KEYS_DICT = {
     "groq"    : GROQ_KEY,
     "gemini"  : GEMINI_KEY,
     "cerebras": CEREBRAS_KEY,
+    "mistral" : MISTRAL_KEY,   # ← BARU
 }
+
 
 # ─── Helper ────────────────────────────────────────────────────────────────────
 
 def _hitung_triwulan(tanggal_mulai: str) -> str:
     """Konversi tanggal ke label triwulan. Format: 'TW1-2026'"""
-    dt   = datetime.strptime(tanggal_mulai, "%Y-%m-%d")
-    tw   = (dt.month - 1) // 3 + 1
+    dt = datetime.strptime(tanggal_mulai, "%Y-%m-%d")
+    tw = (dt.month - 1) // 3 + 1
     return f"TW{tw}-{dt.year}"
 
 
@@ -56,15 +58,15 @@ def _jalankan_pipeline_satu_level(
     Return list artikel yang lolos screening.
     """
     wilayah_nama = level_cfg["nama"]
-    wilayah_key = level_cfg["key"]
-    
+    wilayah_key  = level_cfg["key"]
+
     print(f"\n{'='*55}")
     print(f"  🌍 Level Wilayah: {wilayah_nama}")
     print(f"{'='*55}")
 
-    # PERBAIKAN 1: Terapkan fungsi replace untuk perlindungan Kota/Kabupaten Magelang!
+    # Terapkan fungsi replace untuk perlindungan Kota/Kabupaten Magelang
     keyword_list = siapkan_keyword_fallback(level_cfg, keywords_dict)
-    
+
     # Bungkus ke dalam dictionary agar formatnya sesuai dengan input searcher.py
     keywords_siap = {wilayah_key: keyword_list}
 
@@ -78,7 +80,6 @@ def _jalankan_pipeline_satu_level(
 
     # Gerbang 3: Filter URL sudah ada di DB
     list_url = [item["url"] for item in hasil_search]
-    # PERBAIKAN 3: Alirkan parameter paksa_proses_ulang ke database
     url_baru, warnings = filter_url_baru(list_url, paksa_proses_ulang)
 
     if warnings:
@@ -99,7 +100,7 @@ def _jalankan_pipeline_satu_level(
 
     # Gerbang 5: AI Screening
     lolos, tidak_lolos = screening_batch(
-        api_keys=API_KEYS_DICT,          # <--- INI YANG DIUBAH
+        api_keys=API_KEYS_DICT,
         list_artikel=artikel_scraped,
         nama_kategori=nama_kategori,
         wilayah=wilayah_nama,
@@ -110,9 +111,8 @@ def _jalankan_pipeline_satu_level(
     url_to_meta = {item["url"]: item for item in hasil_search}
 
     for artikel in lolos + tidak_lolos:
-        url    = artikel.get("url", "")
-        judul  = artikel.get("judul", "")
-        meta   = url_to_meta.get(url, {})
+        url   = artikel.get("url", "")
+        judul = artikel.get("judul", "")
         simpan_artikel(
             url=url,
             judul=judul,
@@ -158,7 +158,7 @@ def scan_kategori(
     # Gerbang 1: Query Expansion
     print(f"\n[1/6] 🔍 Menerjemahkan kategori ke keyword...")
     keywords = dapatkan_keywords(nama_kategori, GROQ_KEY)
-    
+
     semua_artikel_valid = []
     level_sekarang = 0
 
@@ -183,15 +183,13 @@ def scan_kategori(
             print(f"\n  ✅ +{len(lolos)} artikel dari level {level_sekarang} ({level_cfg['nama']})")
             print(f"     Total terkumpul: {len(semua_artikel_valid)} artikel")
 
-        # ─── PERBAIKAN: Logika lanjut/berhenti ───────────────────────────────
+        # Logika lanjut/berhenti
         if not aktifkan_fallback:
-            break  # Jika fallback dimatikan, hanya level 1
+            break
 
         if scan_semua_level:
-            # Mode lengkap: tetap lanjut ke level berikutnya meski sudah cukup
             continue
         else:
-            # Mode cepat: berhenti jika sudah dapat minimal artikel
             if len(semua_artikel_valid) >= target_minimal:
                 print(f"\n  ✅ Target minimal {target_minimal} artikel tercapai. Berhenti di level {level_sekarang}.")
                 break
@@ -199,7 +197,6 @@ def scan_kategori(
     # Update status kategori di DB
     update_status_kategori(nama_kategori, triwulan, len(semua_artikel_valid))
 
-    # Susun output
     if semua_artikel_valid:
         semua_artikel_valid.sort(key=lambda x: x.get("skor_relevansi", 0), reverse=True)
         return {
@@ -230,7 +227,7 @@ def batch_scan_semua_kategori(
     tanggal_selesai: str,
     min_skor: int = 6,
     paksa_proses_ulang: bool = False,
-    callback_progress=None  
+    callback_progress=None
 ) -> dict:
     """
     Scan semua kategori PDRB secara berurutan.
@@ -246,11 +243,11 @@ def batch_scan_semua_kategori(
     for i, kategori in enumerate(daftar_kategori, 1):
         print(f"\n[{i}/{len(daftar_kategori)}] ▶ {kategori}")
         hasil = scan_kategori(
-            kategori, 
-            tanggal_mulai, 
-            tanggal_selesai, 
-            min_skor, 
-            aktifkan_fallback=True, 
+            kategori,
+            tanggal_mulai,
+            tanggal_selesai,
+            min_skor,
+            aktifkan_fallback=True,
             paksa_proses_ulang=paksa_proses_ulang
         )
         hasil_per_kategori[kategori] = hasil
@@ -264,13 +261,13 @@ def batch_scan_semua_kategori(
             callback_progress(kategori, i, len(daftar_kategori))
 
     return {
-        "total_kategori":     len(daftar_kategori),
-        "ada_berita":         ada_berita,
-        "tidak_ada_berita":   tidak_ada,
-        "detail":             hasil_per_kategori,
+        "total_kategori"  : len(daftar_kategori),
+        "ada_berita"      : ada_berita,
+        "tidak_ada_berita": tidak_ada,
+        "detail"          : hasil_per_kategori,
         "ringkasan": {
-            "sukses":  len(ada_berita),
-            "buntu":   len(tidak_ada),
+            "sukses"       : len(ada_berita),
+            "buntu"        : len(tidak_ada),
             "persen_sukses": round(len(ada_berita) / len(daftar_kategori) * 100, 1) if daftar_kategori else 0
         }
     }

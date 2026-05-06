@@ -11,8 +11,10 @@ import openai
 from groq import Groq
 from google import genai as google_genai
 from google.genai import types as google_types
+from mistralai import Mistral  # pip install mistralai
 
 # ─── KONFIGURASI MODEL STACK ──────────────────────────────────────────────────
+# Diselaraskan dengan MODEL_STACK di ai_engine.py
 SCREENER_STACK = [
     {
         "nama": "Groq — Llama 3.3 70B",
@@ -20,14 +22,19 @@ SCREENER_STACK = [
         "model_id": "llama-3.3-70b-versatile"
     },
     {
+        "nama": "Cerebras — Llama 3.3 70B",
+        "provider": "cerebras",
+        "model_id": "llama-3.3-70b"            # ✅ DIFIX: bukan gpt-oss-120b
+    },
+    {
         "nama": "Google — Gemini 2.5 Flash",
         "provider": "gemini",
         "model_id": "gemini-2.5-flash"
     },
     {
-        "nama": "Cerebras — GPT-OSS 120B",   # ← TAMBAH INI: 1M token/hari gratis
-        "provider": "cerebras",
-        "model_id": "gpt-oss-120b"
+        "nama": "Mistral — Mistral Small",
+        "provider": "mistral",
+        "model_id": "mistral-small-latest"      # ← BARU: ~1B token/bulan gratis
     },
     {
         "nama": "Groq — Llama 3.1 8B Instant",
@@ -40,7 +47,6 @@ SCREENER_STACK = [
 def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
     """
     Menjalankan request AI dengan fallback stack.
-    DIPERBAIKI: Handle None response dari Gemini.
     """
     for cfg in SCREENER_STACK:
         provider = cfg["provider"]
@@ -64,7 +70,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     response_format={"type": "json_object"}
                 )
                 teks = resp.choices[0].message.content
-                # ─── PERBAIKAN: Validasi tidak None ───
                 if teks is None or teks.strip() == "":
                     raise ValueError("Groq mengembalikan respons kosong")
                 return teks, cfg["nama"]
@@ -82,12 +87,11 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                         thinking_config=google_types.ThinkingConfig(thinking_budget=0)
                     )
                 )
-                # ─── PERBAIKAN: Validasi tidak None sebelum .strip() ───
                 teks = resp.text if resp.text is not None else ""
                 if teks.strip() == "":
                     raise ValueError("Gemini mengembalikan respons kosong")
                 return teks, cfg["nama"]
-            
+
             elif provider == "cerebras":
                 client = openai.OpenAI(
                     api_key=api_key,
@@ -108,6 +112,23 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     raise ValueError("Cerebras mengembalikan respons kosong")
                 return teks, cfg["nama"]
 
+            elif provider == "mistral":
+                client = Mistral(api_key=api_key)
+                resp = client.chat.complete(
+                    model=model_id,
+                    messages=[
+                        {"role": "system", "content": "Validator berita BPS. Balas HANYA JSON murni tanpa markdown."},
+                        {"role": "user",   "content": prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=400,
+                    response_format={"type": "json_object"}
+                )
+                teks = resp.choices[0].message.content
+                if teks is None or teks.strip() == "":
+                    raise ValueError("Mistral mengembalikan respons kosong")
+                return teks, cfg["nama"]
+
         except Exception as e:
             err = str(e).lower()
             is_limit = any(k in err for k in [
@@ -121,6 +142,9 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
             elif "503" in err or "unavailable" in err:
                 print(f"         ⚠️ {cfg['nama']} Server sibuk (503). Pindah ke model berikutnya...")
                 continue
+            elif "404" in err or "not found" in err or "does not exist" in err:
+                print(f"         ⚠️ {cfg['nama']} Model 404! Pindah ke model berikutnya...")
+                continue
             else:
                 print(f"         ⚠️ {cfg['nama']} Error: {str(e)[:80]}")
                 continue
@@ -131,18 +155,18 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
 def screening_satu_artikel(api_keys: dict, artikel: dict, nama_kategori: str, wilayah: str) -> dict:
     """
     Screening artikel untuk BPS Kota Magelang.
-    
+
     ATURAN GEOGRAFI YANG BENAR:
     ✅ LOLOS: Artikel menyebut Kota Magelang secara eksplisit
     ✅ LOLOS: Artikel tentang Kabupaten Magelang (1 wilayah, berdampak ke Kota)
     ✅ LOLOS: Artikel Jawa Tengah (provinsi Kota Magelang berada)
-    ✅ LOLOS: Artikel NASIONAL dari Kementerian/Badan/Pemerintah Pusat 
+    ✅ LOLOS: Artikel NASIONAL dari Kementerian/Badan/Pemerintah Pusat
               yang dampaknya ke SELURUH Indonesia (otomatis termasuk Kota Magelang)
     ❌ TOLAK: Artikel dari provinsi LAIN (Jatim, Bali, Sumsel, Kalsel, dll)
               yang tidak menyebut Magelang/Jawa Tengah sama sekali
     ❌ TOLAK: Artikel opini/berita tanpa data angka apapun
     """
-    teks_pendek = artikel.get("teks", "")[:4000]  # Diperbesar dari 3000 → 4000
+    teks_pendek = artikel.get("teks", "")[:4000]
     judul       = artikel.get("judul", "")
     url         = artikel.get("url_asli", artikel.get("url", ""))
 
@@ -259,17 +283,17 @@ def screening_batch(
     if not list_artikel:
         return [], []
 
-    # ─── PERBAIKAN: Prioritaskan artikel yang ada "magelang" di judul/URL ───
+    # Prioritaskan artikel yang ada "magelang" di judul/URL
     def skor_prioritas(art):
         teks_cek = (art.get("judul", "") + art.get("url", "")).lower()
         if "kota magelang" in teks_cek:
-            return 0   # Prioritas tertinggi
+            return 0
         elif "magelang" in teks_cek:
             return 1
         elif "jawa tengah" in teks_cek or "jateng" in teks_cek:
             return 2
         else:
-            return 3   # Prioritas terendah
+            return 3
 
     list_artikel_sorted = sorted(list_artikel, key=skor_prioritas)
 
@@ -277,7 +301,7 @@ def screening_batch(
         print(f"   ⚠️ {len(list_artikel_sorted)} artikel dipotong ke {max_artikel} (prioritas: Magelang > Jateng > Nasional)")
         list_artikel_sorted = list_artikel_sorted[:max_artikel]
 
-    # Tampilan wilayah
+    # Label tampilan wilayah
     wilayah_lower = wilayah.lower()
     if "kota magelang" in wilayah_lower:
         tampilan = "KOTA MAGELANG"
