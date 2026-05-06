@@ -553,98 +553,98 @@ with tab2:
                                            type="primary", use_container_width=True)
 
             if submit:
-    tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
+                tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
 
-    json_final = {
-        "tema_topik"           : tema,
-        "judul_dan_tanggal"    : judul_tgl,
-        "sumber_dan_link"      : sumber,
-        "ringkasan_fenomena"   : ringkasan,
-        "data_angka"           : angka,
-        "kutipan_tokoh"        : kutipan,
-        "lokasi_spesifik"      : lokasi,
-        "intervensi_pemerintah": intervensi,
-        "periode_kejadian"     : periode,
-        "kata_kunci"           : kata_kunci,
-        "sentimen_dampak"      : sentimen,
-        "kategori_perbandingan": perbandingan,
-        "_url_sumber"          : st.session_state.ekstraksi_url_aktif,
-        "_waktu_ekstraksi"     : datetime.now().strftime("%Y-%m-%d %H:%M"),
-    }
+                json_final = {
+                    "tema_topik"           : tema,
+                    "judul_dan_tanggal"    : judul_tgl,
+                    "sumber_dan_link"      : sumber,
+                    "ringkasan_fenomena"   : ringkasan,
+                    "data_angka"           : angka,
+                    "kutipan_tokoh"        : kutipan,
+                    "lokasi_spesifik"      : lokasi,
+                    "intervensi_pemerintah": intervensi,
+                    "periode_kejadian"     : periode,
+                    "kata_kunci"           : kata_kunci,
+                    "sentimen_dampak"      : sentimen,
+                    "kategori_perbandingan": perbandingan,
+                    "_url_sumber"          : st.session_state.ekstraksi_url_aktif,
+                    "_waktu_ekstraksi"     : datetime.now().strftime("%Y-%m-%d %H:%M"),
+                }
 
-    st.success("🎉 Berhasil difinalisasi! Artikel dihapus dari antrean Radar.")
-    st.session_state.target_url      = ""
-    st.session_state.hasil_ekstraksi = None
+                st.success("🎉 Berhasil difinalisasi! Artikel dihapus dari antrean Radar.")
+                st.session_state.target_url      = ""
+                st.session_state.hasil_ekstraksi = None
 
-    # ─── Tampilan Hasil Akhir ────────────────────────────────────────────
-    st.markdown("#### 📤 Unduh Hasil Ekstraksi")
+                # ─── Tampilan Hasil Akhir ────────────────────────────────────────────
+                st.markdown("#### 📤 Unduh Hasil Ekstraksi")
 
-    col_dl1, col_dl2, col_dl3 = st.columns(3)
+                col_dl1, col_dl2, col_dl3 = st.columns(3)
 
-    # Download XLSX (utama)
-    with col_dl1:
-        excel_bytes = _buat_excel_ekstraksi(json_final)
-        nama_file_excel = f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-        st.download_button(
-            label="⬇️ Download Excel (.xlsx)",
-            data=excel_bytes,
-            file_name=nama_file_excel,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            type="primary"
-        )
-        st.caption("Format terformat rapi, siap cetak/isi ke sistem BPS")
+                # Download XLSX (utama)
+                with col_dl1:
+                    excel_bytes = _buat_excel_ekstraksi(json_final)
+                    nama_file_excel = f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+                    st.download_button(
+                        label="⬇️ Download Excel (.xlsx)",
+                        data=excel_bytes,
+                        file_name=nama_file_excel,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                    st.caption("Format terformat rapi, siap cetak/isi ke sistem BPS")
 
-    # Download CSV
-    with col_dl2:
-        df_hasil = pd.DataFrame([
-            {"Variabel": k.replace("_", " ").title(), "Nilai": v}
-            for k, v in json_final.items()
-            if not k.startswith("_")
-        ])
-        csv_buf = io.StringIO()
-        df_hasil.to_csv(csv_buf, index=False)
-        st.download_button(
-            label="⬇️ Download CSV",
-            data=csv_buf.getvalue(),
-            file_name=f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-        st.caption("Untuk import ke database atau Excel manual")
+                # Download CSV
+                with col_dl2:
+                    df_hasil = pd.DataFrame([
+                        {"Variabel": k.replace("_", " ").title(), "Nilai": v}
+                        for k, v in json_final.items()
+                        if not k.startswith("_")
+                    ])
+                    csv_buf = io.StringIO()
+                    df_hasil.to_csv(csv_buf, index=False)
+                    st.download_button(
+                        label="⬇️ Download CSV",
+                        data=csv_buf.getvalue(),
+                        file_name=f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                    st.caption("Untuk import ke database atau Excel manual")
 
-    # Download JSON
-    with col_dl3:
-        st.download_button(
-            label="⬇️ Download JSON",
-            data=json.dumps(json_final, indent=4, ensure_ascii=False).encode("utf-8"),
-            file_name=f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-            mime="application/json",
-            use_container_width=True
-        )
-        st.caption("Untuk arsip digital / integrasi sistem")
+                # Download JSON
+                with col_dl3:
+                    st.download_button(
+                        label="⬇️ Download JSON",
+                        data=json.dumps(json_final, indent=4, ensure_ascii=False).encode("utf-8"),
+                        file_name=f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                        mime="application/json",
+                        use_container_width=True
+                    )
+                    st.caption("Untuk arsip digital / integrasi sistem")
 
-    # Preview tabel di layar
-    with st.expander("👁️ Lihat Preview Hasil", expanded=True):
-        df_preview = pd.DataFrame([
-            {"No": i+1, "Variabel": label, "Hasil": json_final.get(key, "")}
-            for i, (key, label) in enumerate([
-                ("tema_topik", "Tema Topik"),
-                ("judul_dan_tanggal", "Judul & Tanggal"),
-                ("sumber_dan_link", "Sumber & Link"),
-                ("ringkasan_fenomena", "Ringkasan Fenomena"),
-                ("data_angka", "Data Angka"),
-                ("kutipan_tokoh", "Kutipan Tokoh"),
-                ("lokasi_spesifik", "Lokasi Spesifik"),
-                ("intervensi_pemerintah", "Intervensi Pemerintah"),
-                ("periode_kejadian", "Periode Kejadian"),
-                ("kata_kunci", "Kata Kunci"),
-                ("sentimen_dampak", "Sentimen Dampak"),
-                ("kategori_perbandingan", "Kategori Perbandingan"),
-            ])
-        ])
-        st.dataframe(df_preview, use_container_width=True, hide_index=True,
-                     column_config={"Hasil": st.column_config.TextColumn(width="large")})
+                # Preview tabel di layar
+                with st.expander("👁️ Lihat Preview Hasil", expanded=True):
+                    df_preview = pd.DataFrame([
+                        {"No": i+1, "Variabel": label, "Hasil": json_final.get(key, "")}
+                        for i, (key, label) in enumerate([
+                            ("tema_topik", "Tema Topik"),
+                            ("judul_dan_tanggal", "Judul & Tanggal"),
+                            ("sumber_dan_link", "Sumber & Link"),
+                            ("ringkasan_fenomena", "Ringkasan Fenomena"),
+                            ("data_angka", "Data Angka"),
+                            ("kutipan_tokoh", "Kutipan Tokoh"),
+                            ("lokasi_spesifik", "Lokasi Spesifik"),
+                            ("intervensi_pemerintah", "Intervensi Pemerintah"),
+                            ("periode_kejadian", "Periode Kejadian"),
+                            ("kata_kunci", "Kata Kunci"),
+                            ("sentimen_dampak", "Sentimen Dampak"),
+                            ("kategori_perbandingan", "Kategori Perbandingan"),
+                        ])
+                    ])
+                    st.dataframe(df_preview, use_container_width=True, hide_index=True,
+                                column_config={"Hasil": st.column_config.TextColumn(width="large")})
     else:
         st.info("👆 Masukkan URL dan klik **Mulai Ekstrak** untuk memulai.")
 
