@@ -138,6 +138,8 @@ def scan_kategori(
     min_skor: int = 6,
     aktifkan_fallback: bool = True,
     paksa_proses_ulang: bool = False,
+    scan_semua_level: bool = True,
+    target_minimal: int = 3,
 ) -> dict:
     """
     Fungsi utama RADAR untuk scan 1 kategori PDRB.
@@ -160,10 +162,9 @@ def scan_kategori(
     semua_artikel_valid = []
     level_sekarang = 0
 
-    # Loop fallback wilayah
     for level_cfg in URUTAN_FALLBACK:
         level_sekarang = level_cfg["level"]
-        print(f"\n[2-5/{len(URUTAN_FALLBACK)}] Pipeline Level {level_sekarang}: {level_cfg['nama']}")
+        print(f"\n[Level {level_sekarang}/{len(URUTAN_FALLBACK)}] Pipeline: {level_cfg['nama']}")
 
         lolos = _jalankan_pipeline_satu_level(
             nama_kategori=nama_kategori,
@@ -178,15 +179,22 @@ def scan_kategori(
 
         semua_artikel_valid.extend(lolos)
 
-        if semua_artikel_valid:
-            print(f"\n  ✅ {len(semua_artikel_valid)} artikel valid ditemukan di level {level_sekarang}!")
-            if not aktifkan_fallback:
-                break  # Tidak perlu lanjut ke level berikutnya
-            if len(semua_artikel_valid) >= 3:
-                break  # Sudah cukup, tidak perlu ekspansi lebih jauh
+        if lolos:
+            print(f"\n  ✅ +{len(lolos)} artikel dari level {level_sekarang} ({level_cfg['nama']})")
+            print(f"     Total terkumpul: {len(semua_artikel_valid)} artikel")
 
+        # ─── PERBAIKAN: Logika lanjut/berhenti ───────────────────────────────
         if not aktifkan_fallback:
-            break
+            break  # Jika fallback dimatikan, hanya level 1
+
+        if scan_semua_level:
+            # Mode lengkap: tetap lanjut ke level berikutnya meski sudah cukup
+            continue
+        else:
+            # Mode cepat: berhenti jika sudah dapat minimal artikel
+            if len(semua_artikel_valid) >= target_minimal:
+                print(f"\n  ✅ Target minimal {target_minimal} artikel tercapai. Berhenti di level {level_sekarang}.")
+                break
 
     # Update status kategori di DB
     update_status_kategori(nama_kategori, triwulan, len(semua_artikel_valid))
