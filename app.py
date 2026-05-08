@@ -230,6 +230,7 @@ for key, default in [
     ("hasil_ekstraksi", None),
     ("ekstraksi_url_aktif", ""),
     ("tab_aktif", 0),
+    ("json_final_siap", None),   # ← TAMBAH BARIS INI
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -554,8 +555,7 @@ with tab2:
 
             if submit:
                 tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
-
-                json_final = {
+                st.session_state.json_final_siap = {
                     "tema_topik"           : tema,
                     "judul_dan_tanggal"    : judul_tgl,
                     "sumber_dan_link"      : sumber,
@@ -571,80 +571,74 @@ with tab2:
                     "_url_sumber"          : st.session_state.ekstraksi_url_aktif,
                     "_waktu_ekstraksi"     : datetime.now().strftime("%Y-%m-%d %H:%M"),
                 }
-
-                st.success("🎉 Berhasil difinalisasi! Artikel dihapus dari antrean Radar.")
                 st.session_state.target_url      = ""
                 st.session_state.hasil_ekstraksi = None
+                st.success("🎉 Berhasil difinalisasi! Lihat tombol download di bawah.")
 
-                # ─── Tampilan Hasil Akhir ────────────────────────────────────────────
-                st.markdown("#### 📤 Unduh Hasil Ekstraksi")
+                # ── DOWNLOAD BUTTONS — DI LUAR FORM (WAJIB di sini, tidak boleh di dalam form) ──
+    if st.session_state.json_final_siap:
+        jf = st.session_state.json_final_siap
+        st.markdown("#### 📤 Unduh Hasil Ekstraksi")
 
-                col_dl1, col_dl2, col_dl3 = st.columns(3)
+        col_dl1, col_dl2, col_dl3 = st.columns(3)
+        ts = datetime.now().strftime('%Y%m%d_%H%M')
 
-                # Download XLSX (utama)
-                with col_dl1:
-                    excel_bytes = _buat_excel_ekstraksi(json_final)
-                    nama_file_excel = f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-                    st.download_button(
-                        label="⬇️ Download Excel (.xlsx)",
-                        data=excel_bytes,
-                        file_name=nama_file_excel,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        type="primary"
-                    )
-                    st.caption("Format terformat rapi, siap cetak/isi ke sistem BPS")
+        with col_dl1:
+            st.download_button(
+                "⬇️ Download Excel (.xlsx)",
+                data=_buat_excel_ekstraksi(jf),
+                file_name=f"sifeno_{ts}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, type="primary",
+                key="dl_xlsx"
+            )
+            st.caption("📊 Excel — siap cetak & edit")
 
-                # Download CSV
-                with col_dl2:
-                    df_hasil = pd.DataFrame([
-                        {"Variabel": k.replace("_", " ").title(), "Nilai": v}
-                        for k, v in json_final.items()
-                        if not k.startswith("_")
-                    ])
-                    csv_buf = io.StringIO()
-                    df_hasil.to_csv(csv_buf, index=False)
-                    st.download_button(
-                        label="⬇️ Download CSV",
-                        data=csv_buf.getvalue(),
-                        file_name=f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                    st.caption("Untuk import ke database atau Excel manual")
+        with col_dl2:
+            LABEL_MAP_DL = [
+                ("tema_topik","Tema Topik"),("judul_dan_tanggal","Judul & Tanggal"),
+                ("sumber_dan_link","Sumber & Link"),("ringkasan_fenomena","Ringkasan Fenomena"),
+                ("data_angka","Data Angka"),("kutipan_tokoh","Kutipan Tokoh"),
+                ("lokasi_spesifik","Lokasi Spesifik"),("intervensi_pemerintah","Intervensi Pemerintah"),
+                ("periode_kejadian","Periode Kejadian"),("kata_kunci","Kata Kunci"),
+                ("sentimen_dampak","Sentimen Dampak"),("kategori_perbandingan","Kategori Perbandingan"),
+            ]
+            df_csv = pd.DataFrame([{"Variabel": lbl, "Nilai": jf.get(k,"")} for k, lbl in LABEL_MAP_DL])
+            csv_buf = io.StringIO()
+            df_csv.to_csv(csv_buf, index=False)
+            st.download_button(
+                "⬇️ Download CSV",
+                data=csv_buf.getvalue(),
+                file_name=f"sifeno_{ts}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="dl_csv"
+            )
+            st.caption("📄 CSV — untuk import data")
 
-                # Download JSON
-                with col_dl3:
-                    st.download_button(
-                        label="⬇️ Download JSON",
-                        data=json.dumps(json_final, indent=4, ensure_ascii=False).encode("utf-8"),
-                        file_name=f"sifeno_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                        mime="application/json",
-                        use_container_width=True
-                    )
-                    st.caption("Untuk arsip digital / integrasi sistem")
+        with col_dl3:
+            st.download_button(
+                "⬇️ Download JSON",
+                data=json.dumps(jf, indent=4, ensure_ascii=False).encode("utf-8"),
+                file_name=f"sifeno_{ts}.json",
+                mime="application/json",
+                use_container_width=True,
+                key="dl_json"
+            )
+            st.caption("🗂️ JSON — arsip digital")
 
-                # Preview tabel di layar
-                with st.expander("👁️ Lihat Preview Hasil", expanded=True):
-                    df_preview = pd.DataFrame([
-                        {"No": i+1, "Variabel": label, "Hasil": json_final.get(key, "")}
-                        for i, (key, label) in enumerate([
-                            ("tema_topik", "Tema Topik"),
-                            ("judul_dan_tanggal", "Judul & Tanggal"),
-                            ("sumber_dan_link", "Sumber & Link"),
-                            ("ringkasan_fenomena", "Ringkasan Fenomena"),
-                            ("data_angka", "Data Angka"),
-                            ("kutipan_tokoh", "Kutipan Tokoh"),
-                            ("lokasi_spesifik", "Lokasi Spesifik"),
-                            ("intervensi_pemerintah", "Intervensi Pemerintah"),
-                            ("periode_kejadian", "Periode Kejadian"),
-                            ("kata_kunci", "Kata Kunci"),
-                            ("sentimen_dampak", "Sentimen Dampak"),
-                            ("kategori_perbandingan", "Kategori Perbandingan"),
-                        ])
-                    ])
-                    st.dataframe(df_preview, use_container_width=True, hide_index=True,
-                                column_config={"Hasil": st.column_config.TextColumn(width="large")})
+        # Preview hasil
+        with st.expander("👁️ Preview Hasil Akhir", expanded=True):
+            df_preview = pd.DataFrame([
+                {"No": i+1, "Variabel BPS": lbl, "Hasil Ekstraksi": jf.get(k,"")}
+                for i, (k, lbl) in enumerate(LABEL_MAP_DL)
+            ])
+            st.dataframe(df_preview, use_container_width=True, hide_index=True,
+                         column_config={"Hasil Ekstraksi": st.column_config.TextColumn(width="large")})
+
+        if st.button("🔄 Ekstrak Artikel Baru"):
+            st.session_state.json_final_siap = None
+            st.rerun()
     else:
         st.info("👆 Masukkan URL dan klik **Mulai Ekstrak** untuk memulai.")
 
