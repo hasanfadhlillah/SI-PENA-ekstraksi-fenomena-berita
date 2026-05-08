@@ -15,10 +15,10 @@ MODEL_STACK = [
         "max_chars" : 8000,
     },
     {
-        "nama"      : "Cerebras — Llama 3.3 70B",
+        "nama"      : "Cerebras — GLM 4.7",
         "provider"  : "cerebras",
-        "model_id"  : "llama-3.3-70b",             # Otak sama, beda server (Bonus 1M Token/hari)
-        "max_chars" : 8000,
+        "model_id"  : "zai-glm-4.7",
+        "max_chars" : 400000,
     },
     {
         "nama"      : "Google — Gemini 2.5 Flash",

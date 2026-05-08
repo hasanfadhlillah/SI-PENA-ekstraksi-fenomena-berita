@@ -21,9 +21,9 @@ SCREENER_STACK = [
         "model_id": "llama-3.3-70b-versatile"
     },
     {
-        "nama": "Cerebras — Llama 3.3 70B",
+        "nama": "Cerebras — GLM 4.7",
         "provider": "cerebras",
-        "model_id": "llama-3.3-70b"            # ✅ DIFIX: bukan gpt-oss-120b
+        "model_id": "zai-glm-4.7"
     },
     {
         "nama": "Google — Gemini 2.5 Flash",
