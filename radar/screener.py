@@ -266,6 +266,8 @@ def screening_satu_artikel(api_keys: dict, artikel: dict, nama_kategori: str, wi
         5   : Relevan kategori + wilayah valid, tapi minim data konkret
         3-4 : Ada kaitan dengan kategori tapi data sangat kurang atau wilayah kurang relevan
         1-2 : Artikel tidak relevan kategori, atau berasal dari provinsi lain yang tidak berdampak ke Magelang
+        
+        ATURAN: Jangan pernah membuat-buat data (No Hallucination).
         """
 
     try:
