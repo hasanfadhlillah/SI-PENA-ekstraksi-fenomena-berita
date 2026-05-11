@@ -175,8 +175,8 @@ for key, default in [
 
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    if os.path.exists("Logo BPS MGL-Kota.jpg"):
-        st.image("Logo BPS MGL-Kota.jpg", use_container_width=True)
+    if os.path.exists("logo_bps_magelang.png"):
+        st.image("logo_bps_magelang.png", use_container_width=True)
     
     st.markdown("## 📡 SI-FENO")
     st.markdown("**Sistem Informasi Fenomena Ekonomi**")
