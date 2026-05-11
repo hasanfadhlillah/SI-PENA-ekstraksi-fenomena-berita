@@ -1,4 +1,4 @@
-# SI-FENO Core
+# SI-FENO Core & Combined
 groq>=0.9.0
 google-genai>=1.0.0
 openai>=1.0.0
@@ -12,3 +12,7 @@ openpyxl>=3.1.0
 # SI-FENO RADAR
 ddgs>=0.5.0
 feedparser>=6.0.0
+
+# Additional Dependencies
+altair
+beautifulsoup4

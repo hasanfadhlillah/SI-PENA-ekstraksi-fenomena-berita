@@ -2,14 +2,20 @@
 .env
 venv/
 env/
+.venv/
 
 # Python Cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+*.py[cod]
 
-# Database (SANGAT PENTING: Jangan upload DB ke GitHub)
+# Anaconda
+.conda/
+
+# Database
 *.db
 *.sqlite3
 sifeno_tracker.db
@@ -17,6 +23,11 @@ sifeno_tracker.db
 # OS Files
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
 
 # Streamlit specific (Opsional)
 .streamlit/secrets.toml
