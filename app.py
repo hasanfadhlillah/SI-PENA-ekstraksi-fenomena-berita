@@ -178,10 +178,14 @@ with st.sidebar:
     if os.path.exists("logo_bps_magelang.png"):
         st.image("logo_bps_magelang.png", use_container_width=True)
     
-    st.markdown("## 📡 SI-FENO")
-    st.markdown("**Sistem Informasi Fenomena Ekonomi**")
-    st.markdown("BPS Kota Magelang")
-    st.markdown("---")
+    st.markdown("""
+    <div style="margin-top: -10px; margin-bottom: 20px;">
+        <h1 style="font-size: 2.8rem; font-weight: 900; margin-bottom: 0px; line-height: 1.1; color: #1e293b;">📡 SI-FENO</h1>
+        <div style="font-size: 1.15rem; font-weight: 800; color: #4a6cf7; margin-top: 5px;">Sistem Intelijen Fenomena & Observasi</div>
+        <div style="font-size: 0.95rem; font-weight: 600; color: #64748b; margin-top: 4px;">BPS Kota Magelang</div>
+    </div>
+    <hr style="margin-top: 5px; margin-bottom: 15px;">
+    """, unsafe_allow_html=True)
 
     st.markdown("### 📅 Rentang Waktu Pencarian")
     default_end   = datetime.now()
@@ -216,7 +220,7 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs([
     "📡 RADAR BERITA",
     "📝 EKSTRAKTOR FENOMENA",
-    "📊 HISTORY & EKSPOR"
+    "📊 HISTORY BERITA"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -570,7 +574,7 @@ with tab2:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3: HISTORY & EKSPOR
+# TAB 3: HISTORY
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab3:
     with st.expander("📖 Panduan Penggunaan Tab Riwayat", expanded=False):
@@ -580,7 +584,7 @@ with tab3:
         2. **Export Excel Massal:** Jika atasan meminta rekap mingguan, filter tabel di bawah, lalu klik 'Download Excel'.
         """)
 
-    st.markdown("## 📊 Riwayat & Visualisasi Data SI-FENO")
+    st.markdown("## 📊 History Berita")
 
     from radar.database import get_connection
     try:
