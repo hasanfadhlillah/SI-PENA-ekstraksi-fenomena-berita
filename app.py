@@ -273,7 +273,8 @@ with tab1:
                         hasil_batch = batch_scan_semua_kategori(
                             DAFTAR_KATEGORI, mulai_str, selesai_str,
                             min_skor=min_skor, paksa_proses_ulang=paksa_ulang,
-                            callback_progress=cb_progress
+                            callback_progress=cb_progress,
+                            api_keys=KEYS
                         )
                     prog.empty(); status.empty()
                     r = hasil_batch["ringkasan"]
@@ -288,6 +289,7 @@ with tab1:
                             paksa_proses_ulang=paksa_ulang,
                             scan_semua_level=scan_semua,
                             aktifkan_fallback=True,
+                            api_keys=KEYS
                         )
                     if hasil["status"] == "sukses":
                         st.success(f"✅ Ditemukan **{hasil['jumlah_valid']} artikel** valid! Mengarahkan ke antrean...")
