@@ -9,31 +9,30 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from .database       import (inisialisasi_database, filter_url_baru,
-                              simpan_artikel, update_status_kategori, ambil_artikel_valid)
+                             simpan_artikel, update_status_kategori, ambil_artikel_valid)
 from .query_expander import dapatkan_keywords
 from .searcher       import cari_berita_multi_sumber
 from .fetcher        import fetch_parallel
 from .screener       import screening_batch
 from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya,
-                              buat_pesan_anti_buntu, siapkan_keyword_fallback)
+                             buat_pesan_anti_buntu, siapkan_keyword_fallback)
 
 load_dotenv()
 
-GROQ_KEY     = os.environ.get("GROQ_API_KEY",     "")
-GEMINI_KEY   = os.environ.get("GEMINI_API_KEY",   "")
-CEREBRAS_KEY = os.environ.get("CEREBRAS_API_KEY", "")
-MISTRAL_KEY  = os.environ.get("MISTRAL_API_KEY",  "")  # ← BARU
+# [PERBAIKAN] Membaca kunci API Jamak (Pooling) memprioritaskan yang pakai "S"
+GROQ_KEYS     = os.environ.get("GROQ_API_KEYS", os.environ.get("GROQ_API_KEY", ""))
+GEMINI_KEYS   = os.environ.get("GEMINI_API_KEYS", os.environ.get("GEMINI_API_KEY", ""))
+CEREBRAS_KEYS = os.environ.get("CEREBRAS_API_KEYS", os.environ.get("CEREBRAS_API_KEY", ""))
+MISTRAL_KEYS  = os.environ.get("MISTRAL_API_KEYS", os.environ.get("MISTRAL_API_KEY", ""))
 
 API_KEYS_DICT = {
-    "groq"    : GROQ_KEY,
-    "gemini"  : GEMINI_KEY,
-    "cerebras": CEREBRAS_KEY,
-    "mistral" : MISTRAL_KEY,   # ← BARU
+    "groq"    : GROQ_KEYS,
+    "gemini"  : GEMINI_KEYS,
+    "cerebras": CEREBRAS_KEYS,
+    "mistral" : MISTRAL_KEYS,
 }
 
-
 # ─── Helper ────────────────────────────────────────────────────────────────────
-
 def _hitung_triwulan(tanggal_mulai: str) -> str:
     """Konversi tanggal ke label triwulan. Format: 'TW1-2026'"""
     dt = datetime.strptime(tanggal_mulai, "%Y-%m-%d")
