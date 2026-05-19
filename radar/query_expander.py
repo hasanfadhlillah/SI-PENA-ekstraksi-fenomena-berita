@@ -14,7 +14,7 @@ load_dotenv()
 
 # ─── STATIC DICTIONARY ─────────────────────────────────────────────────────────
 # Format: "nama_kategori": {"magelang": [...], "jateng": [...], "nasional": [...]}
-# PERBAIKAN: Semua keyword level 1 dikunci ketat dengan "kota magelang"
+# Semua keyword level 1 dikunci ketat dengan "kota magelang"
 KEYWORD_DICT = {
     # KATEGORI A: PERTANIAN
     "Tanaman Pangan": {
