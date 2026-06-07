@@ -274,7 +274,7 @@ KEYWORD_DICT = {
         "nasional": ["ekspor furnitur indonesia 2026"],
     },
     # ★ BARU — dari spreadsheet, belum ada di kode sebelumnya
-    "Industri Pengolahan Lainnya dan Jasa Reparasi": {
+    "Industri Pengolahan Lainnya, Jasa Reparasi, Pemasangan Mesin dan Peralatan": {
         "magelang": [
             "masker kota magelang", "produksi tas kota magelang",
             "asesoris kota magelang", "harga bahan baku asesoris",
