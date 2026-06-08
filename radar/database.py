@@ -16,7 +16,7 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sifeno_track
 def get_connection() -> sqlite3.Connection:
     """Membuat koneksi ke database SQLite."""
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # Agar hasil bisa diakses seperti dict
+    conn.row_factory = sqlite3.Row
     return conn
 
 
@@ -60,6 +60,28 @@ def inisialisasi_database():
         )
     """)
 
+    # Tabel 3: Hasil 12 variabel ekstraksi fenomena (untuk download massal Tab 3)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS hasil_ekstraksi (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            url_berita            TEXT    UNIQUE NOT NULL,
+            tema_topik            TEXT,
+            judul_dan_tanggal     TEXT,
+            sumber_dan_link       TEXT,
+            ringkasan_fenomena    TEXT,
+            data_angka            TEXT,
+            kutipan_tokoh         TEXT,
+            lokasi_spesifik       TEXT,
+            intervensi_pemerintah TEXT,
+            periode_kejadian      TEXT,
+            kata_kunci            TEXT,
+            sentimen_dampak       TEXT,
+            kategori_perbandingan TEXT,
+            waktu_ekstraksi       TEXT,
+            model_ai              TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     print("✅ [Database] Inisialisasi selesai.")
@@ -100,7 +122,6 @@ def simpan_artikel(
     cursor = conn.cursor()
     status = "ditemukan" if layak_ekstrak else "tidak_lolos"
     try:
-        # PERBAIKAN: Gunakan UPSERT agar percobaan ulang bisa memperbarui status
         cursor.execute("""
             INSERT INTO riwayat_artikel
             (url_berita, judul_berita, kategori_pdrb, triwulan,
@@ -188,14 +209,11 @@ def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tu
         info = cek_url_sudah_ada(url)
 
         if info is None:
-            # 100% URL Baru
             url_baru.append(url)
-            
+
         elif info["status"] == "diekstrak":
-            # JANGAN DIBIARKAN LOLOS. Ini sudah dipakai oleh staf, cegah kerja dobel!
             tanggal = info.get('tanggal_diekstrak', 'Tanggal tidak diketahui')
             tanggal_rapi = tanggal[:10] if tanggal else ""
-            
             daftar_warning.append({
                 "url": url,
                 "judul": info["judul_berita"],
@@ -203,19 +221,15 @@ def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tu
                 "tanggal_ekstrak": tanggal_rapi,
                 "pesan": f"⚠️ Sudah diekstrak untuk '{info['kategori_pdrb']}' pada {tanggal_rapi}"
             })
-            
+
         elif info["status"] == "ditemukan":
-            # Berita ini valid dan sedang nongkrong di layar antrean.
-            # Tidak perlu dibaca ulang oleh AI, biarkan saja.
             pass
-            
+
         elif info["status"] in ["ditolak_user", "tidak_lolos"]:
-            # JIKA USER MENCENTANG FITUR "PROSES ULANG" DI STREAMLIT
             if paksa_proses_ulang:
                 print(f"   🔄 Memproses ulang URL yang pernah gagal/ditolak: {url}")
                 url_baru.append(url)
             else:
-                # Default: Hemat kuota, abaikan berita sampah masa lalu
                 pass
 
     return url_baru, daftar_warning
@@ -254,3 +268,60 @@ def ambil_semua_status_kategori(triwulan: str) -> list[dict]:
     hasil = [dict(b) for b in cursor.fetchall()]
     conn.close()
     return hasil
+
+
+# ─── FUNGSI HASIL EKSTRAKSI (BARU) ────────────────────────────────────────────
+
+def simpan_hasil_ekstraksi(url: str, json_final: dict):
+    """
+    Simpan 12 variabel hasil ekstraksi ke tabel hasil_ekstraksi.
+    Dipanggil saat user menekan 'Finalisasi' di Tab 2.
+    Jika URL sudah ada, data akan di-overwrite (UPSERT).
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO hasil_ekstraksi
+            (url_berita, tema_topik, judul_dan_tanggal, sumber_dan_link,
+             ringkasan_fenomena, data_angka, kutipan_tokoh, lokasi_spesifik,
+             intervensi_pemerintah, periode_kejadian, kata_kunci,
+             sentimen_dampak, kategori_perbandingan, waktu_ekstraksi, model_ai)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(url_berita) DO UPDATE SET
+                tema_topik            = excluded.tema_topik,
+                judul_dan_tanggal     = excluded.judul_dan_tanggal,
+                sumber_dan_link       = excluded.sumber_dan_link,
+                ringkasan_fenomena    = excluded.ringkasan_fenomena,
+                data_angka            = excluded.data_angka,
+                kutipan_tokoh         = excluded.kutipan_tokoh,
+                lokasi_spesifik       = excluded.lokasi_spesifik,
+                intervensi_pemerintah = excluded.intervensi_pemerintah,
+                periode_kejadian      = excluded.periode_kejadian,
+                kata_kunci            = excluded.kata_kunci,
+                sentimen_dampak       = excluded.sentimen_dampak,
+                kategori_perbandingan = excluded.kategori_perbandingan,
+                waktu_ekstraksi       = excluded.waktu_ekstraksi,
+                model_ai              = excluded.model_ai
+        """, (
+            url,
+            str(json_final.get("tema_topik", "")),
+            str(json_final.get("judul_dan_tanggal", "")),
+            str(json_final.get("sumber_dan_link", "")),
+            str(json_final.get("ringkasan_fenomena", "")),
+            str(json_final.get("data_angka", "")),
+            str(json_final.get("kutipan_tokoh", "")),
+            str(json_final.get("lokasi_spesifik", "")),
+            str(json_final.get("intervensi_pemerintah", "")),
+            str(json_final.get("periode_kejadian", "")),
+            str(json_final.get("kata_kunci", "")),
+            str(json_final.get("sentimen_dampak", "")),
+            str(json_final.get("kategori_perbandingan", "")),
+            str(json_final.get("_waktu_ekstraksi", "")),
+            str(json_final.get("_model_digunakan", "")),
+        ))
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ [DB] Gagal simpan hasil ekstraksi untuk {url[:50]}: {e}")
+    finally:
+        conn.close()

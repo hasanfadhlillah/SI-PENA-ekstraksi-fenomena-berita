@@ -3,530 +3,88 @@
 Modul A: Semantic Query Expander
 Mengubah nomenklatur kaku PDRB menjadi keyword jurnalistik natural.
 Menggunakan static dictionary (cepat) + AI fallback (untuk kategori tidak dikenal).
+Mendukung edit keyword dinamis via keywords.json (Tab 5 di app.py).
 """
 
 import json
 import os
+import re
 from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── STATIC DICTIONARY ─────────────────────────────────────────────────────────
-# Format: "nama_kategori": {"magelang": [...], "jateng": [...], "nasional": [...]}
-# Semua keyword level 1 dikunci ketat dengan "kota magelang"
-# Update: merged dari spreadsheet PDRB_Keyword_SI-PENA.xlsx
-KEYWORD_DICT = {
-    # ── KATEGORI A: PERTANIAN ────────────────────────────────────────────────────
-    "Tanaman Pangan": {
-        "magelang": [
-            "panen padi kota magelang", "harga beras kota magelang",
-            "produksi jagung kota magelang", "pertanian kota magelang",
-            "panen ubi kayu kota magelang", "panen jagung kota magelang",
-            "palawija kota magelang", "pelatihan petani kota magelang",
-            "hama kota magelang", "harga gabah kota magelang",
-            "puso kota magelang", "harga pupuk kota magelang",
-            "kacang tanah kota magelang",
-        ],
-        "jateng": [
-            "panen padi jawa tengah", "produksi beras jateng",
-            "harga gabah jawa tengah", "panen raya",
-            "panen ubi kayu jawa tengah", "panen jagung jawa tengah",
-            "palawija jawa tengah", "pelatihan petani jawa tengah",
-            "hama", "puso jawa tengah", "harga pupuk jawa tengah", "el nino",
-        ],
-        "nasional": [
-            "produksi padi nasional 2026", "stok beras bulog 2026",
-            "panen jagung indonesia", "harga gabah nasional",
-            "harga pupuk nasional", "el nino",
-        ],
-    },
-    "Tanaman Hortikultura Semusim": {
-        "magelang": [
-            "harga cabai kota magelang", "bawang merah kota magelang",
-            "sayuran kota magelang", "harga petsai/sawi kota magelang",
-            "petai/sawi kota magelang", "kacang panjang kota magelang",
-            "budidaya hidroponik kota magelang", "pelatihan budidaya kota magelang",
-            "urban farming kota magelang",
-        ],
-        "jateng": [
-            "cabai rawit jawa tengah", "bawang merah jateng",
-            "hortikultura jawa tengah", "petsai/sawi jawa tengah",
-        ],
-        "nasional": [
-            "harga cabai nasional 2026", "produksi bawang merah indonesia",
-        ],
-    },
-    "Perkebunan Semusim": {
-        "magelang": ["tebu kota magelang", "tembakau kota magelang", "perkebunan kota magelang"],
-        "jateng":   ["produksi tebu jawa tengah", "tembakau jateng"],
-        "nasional": ["produksi gula nasional 2026", "tembakau indonesia"],
-    },
-    "Tanaman Hortikultura Tahunan": {
-        "magelang": [
-            "buah-buahan kota magelang", "durian kota magelang", "harga buah kota magelang",
-            "harga cabai kota magelang", "cabai kota magelang",
-            "pisang kota magelang", "mangga kota magelang", "alpukat kota magelang",
-        ],
-        "jateng": [
-            "buah-buahan jawa tengah", "hortikultura tahunan jateng",
-            "cabai rawit jawa tengah", "harga cabai jawa tengah",
-        ],
-        "nasional": [
-            "ekspor buah indonesia 2026", "harga cabai nasional 2026",
-        ],
-    },
-    "Perkebunan Tahunan": {
-        "magelang": ["kopi kota magelang", "kakao kota magelang", "perkebunan kota magelang"],
-        "jateng":   ["kopi jawa tengah", "kakao jateng", "perkebunan tahunan jawa tengah"],
-        "nasional": ["ekspor kopi indonesia 2026", "produksi kakao nasional"],
-    },
-    "Peternakan": {
-        "magelang": [
-            "harga daging sapi kota magelang", "harga telur kota magelang",
-            "peternakan kota magelang", "rumah potong hewan (rph) kota magelang",
-            "harga daging ayam kota magelang", "sapi kota magelang",
-            "produksi telur kota magelang", "burung kota magelang",
-        ],
-        "jateng": [
-            "peternakan jawa tengah", "sapi jateng", "produksi susu jawa tengah",
-            "harga daging ayam jawa tengah", "harga daging sapi jawa tengah",
-            "produksi telur jawa tengah", "harga ternak jawa tengah",
-        ],
-        "nasional": [
-            "harga daging sapi nasional 2026", "produksi telur indonesia",
-            "kebijakan pemerintah",
-        ],
-    },
-    "Jasa Pertanian dan Perburuan": {
-        "magelang": [
-            "jasa pertanian kota magelang", "penyuluh pertanian kota magelang",
-            "jasa pemeliharaan tanaman kota magelang",
-        ],
-        "jateng":   ["jasa pertanian jawa tengah", "alsintan jateng"],
-        "nasional": ["jasa pertanian indonesia 2026", "jasa pertanian indonesia"],
-    },
-    "Kehutanan dan Penebangan Kayu": {
-        "magelang": ["kayu kota magelang", "penebangan pohon kota magelang"],
-        "jateng":   ["kehutanan jawa tengah", "hutan produksi jateng", "harga kayu"],
-        "nasional": ["produksi kayu indonesia 2026", "deforestasi nasional"],
-    },
-    "Perikanan": {
-        "magelang": [
-            "harga ikan kota magelang", "budidaya ikan kota magelang",
-            "pasar ikan kota magelang", "budidaya lele kota magelang",
-            "nila kota magelang", "pelatihan perikanan kota magelang",
-        ],
-        "jateng":   ["perikanan jawa tengah", "ikan laut jateng", "nelayan jawa tengah", "harga ikan budidaya"],
-        "nasional": ["produksi ikan indonesia 2026", "ekspor ikan nasional", "harga pakan ikan"],
-    },
-    # ── KATEGORI B: PERTAMBANGAN ─────────────────────────────────────────────────
-    "Pertambangan Minyak dan Gas Bumi": {
-        "magelang": ["BBM kota magelang", "pertamina kota magelang", "SPBU kota magelang"],
-        "jateng":   ["migas jawa tengah", "blok migas jateng", "kuota pertalite jateng"],
-        "nasional": ["produksi minyak bumi indonesia 2026", "lifting migas nasional"],
-    },
-    "Pertambangan Batubara dan Lignit": {
-        "magelang": ["harga batubara kota magelang", "pasokan batu bara kota magelang"],
-        "jateng":   ["batubara jawa tengah", "PLTU jateng"],
-        "nasional": ["produksi batubara indonesia 2026", "ekspor batu bara nasional"],
-    },
-    "Pertambangan Bijih Logam": {
-        "magelang": ["logam kota magelang", "tambang kota magelang"],
-        "jateng":   ["pertambangan logam jawa tengah"],
-        "nasional": ["nikel indonesia 2026", "tembaga nasional", "bijih logam indonesia"],
-    },
-    "Pertambangan dan Penggalian Lainnya": {
-        "magelang": [
-            "galian c kota magelang", "tambang pasir kota magelang",
-            "material bangunan kota magelang",
-        ],
-        "jateng":   ["galian c jawa tengah", "pasir uruk jateng", "tambang ilegal jateng"],
-        "nasional": ["pertambangan galian c indonesia 2026"],
-    },
-    # ── KATEGORI C: INDUSTRI PENGOLAHAN ─────────────────────────────────────────
-    "Industri Makanan dan Minuman": {
-        "magelang": [
-            "pabrik makanan kota magelang", "UMKM kuliner kota magelang",
-            "industri minuman kota magelang", "pabrik tahu kota magelang",
-            "peyek paru kota magelang", "produksi slondok kota magelang",
-            "industri gethuk kota magelang", "abon kota magelang",
-            "kecap kota magelang", "es cream kota magelang",
-            "tepung terigu kota magelang", "roti dan kue kota magelang",
-            "sentra industri tahu kota magelang",
-        ],
-        "jateng": [
-            "industri makanan jawa tengah", "pabrik minuman jateng",
-            "harga bahan baku roti", "ekspor bahan baku", "impor bahan baku",
-        ],
-        "nasional": [
-            "industri makanan minuman indonesia 2026",
-            "harga terigu", "harga bahan baku",
-        ],
-    },
-    "Pengolahan Tembakau": {
-        "magelang": [
-            "pabrik rokok kota magelang", "industri tembakau kota magelang",
-            "cukai rokok kota magelang", "cengkeh kota magelang",
-            "tembakau rajangan kota magelang", "rejeki tidar kota magelang",
-            "daun jeruk kota magelang", "bumbu rokok kota magelang",
-        ],
-        "jateng":   ["industri tembakau jawa tengah", "pabrik rokok jateng", "buruh rokok jateng"],
-        "nasional": ["industri rokok indonesia 2026", "cukai tembakau nasional"],
-    },
-    "Industri Tekstil dan Pakaian Jadi": {
-        "magelang": [
-            "pabrik tekstil kota magelang", "konveksi kota magelang",
-            "garmen kota magelang", "tenun kota magelang",
-            "bordir kain kota magelang", "ecoprint kota magelang",
-            "batik kota magelang", "ekspor tekstil kota magelang",
-            "sarung kota magelang",
-        ],
-        "jateng": [
-            "industri tekstil jawa tengah", "garmen jateng",
-            "pabrik pakaian jateng", "harga tekstil jawa tengah",
-        ],
-        "nasional": [
-            "ekspor tekstil indonesia 2026", "PHK pabrik garmen",
-            "harga kapas nasional",
-        ],
-    },
-    "Industri Kulit, Barang dari Kulit dan Alas Kaki": {
-        "magelang": [
-            "industri sepatu kota magelang", "pabrik sandal kota magelang",
-            "kerajinan kulit kota magelang", "dompet kulit kota magelang",
-            "asesoris kulit kota magelang", "harga kulit kota magelang",
-        ],
-        "jateng":   ["industri alas kaki jawa tengah", "pabrik sepatu jateng", "sepatu kulit jawa tengah"],
-        "nasional": ["ekspor alas kaki indonesia 2026"],
-    },
-    "Industri Kayu, Barang dari Kayu dan Gabus": {
-        "magelang": [
-            "mebel kota magelang", "furnitur kayu kota magelang",
-            "pengrajin kayu kota magelang", "kayu kota magelang",
-            "plywood kota magelang", "kusen kayu kota magelang",
-            "panel kayu kota magelang",
-        ],
-        "jateng":   ["industri kayu jawa tengah", "ekspor mebel jateng"],
-        "nasional": ["ekspor furnitur kayu indonesia 2026", "ekspor plywood indonesia 2026"],
-    },
-    "Industri Kertas dan Percetakan": {
-        "magelang": [
-            "percetakan kota magelang", "industri kertas kota magelang",
-            "reproduksi video dan film kota magelang",
-        ],
-        "jateng":   ["industri kertas jawa tengah", "percetakan jateng"],
-        "nasional": ["industri kertas indonesia 2026"],
-    },
-    "Industri Kimia, Farmasi dan Obat Tradisional": {
-        "magelang": [
-            "pabrik obat kota magelang", "apotek kota magelang", "jamu kota magelang",
-            "pewangi kota magelang", "sabun cuci kota magelang",
-            "lilin aroma terapi kota magelang",
-        ],
-        "jateng":   ["industri farmasi jawa tengah", "pabrik obat jateng", "jamu tradisional jateng"],
-        "nasional": ["industri farmasi indonesia 2026", "ekspor jamu nasional"],
-    },
-    "Industri Karet, Barang dari Karet dan Plastik": {
-        "magelang": [
-            "pabrik plastik kota magelang", "industri plastik kota magelang",
-            "vulkanisir ban kota magelang", "kantong plastik kota magelang",
-        ],
-        "jateng":   ["industri karet jawa tengah", "pabrik plastik jateng"],
-        "nasional": ["industri karet indonesia 2026"],
-    },
-    "Industri Barang Galian bukan Logam": {
-        "magelang": [
-            "pabrik genteng kota magelang", "keramik kota magelang",
-            "toko bangunan kota magelang", "bahan kaca kota magelang",
-            "akuarium kota magelang", "gypsum kota magelang", "nisan kota magelang",
-        ],
-        "jateng":   ["industri genteng jawa tengah", "keramik jateng"],
-        "nasional": ["industri semen indonesia 2026"],
-    },
-    "Industri Logam Dasar": {
-        "magelang": ["logam kota magelang", "bengkel las kota magelang"],
-        "jateng":   ["industri logam jawa tengah", "baja jateng"],
-        "nasional": ["industri baja indonesia 2026"],
-    },
-    "Industri Barang dari Logam, Komputer, Elektronik": {
-        "magelang": [
-            "toko elektronik kota magelang", "penjualan komputer kota magelang",
-            "bengkel las kota magelang", "aluminium kota magelang",
-        ],
-        "jateng":   ["industri elektronik jawa tengah"],
-        "nasional": ["industri elektronik indonesia 2026", "ekspor elektronik nasional"],
-    },
-    "Industri Alat Angkutan": {
-        "magelang": [
-            "karoseri kota magelang", "bengkel mobil kota magelang",
-            "dealer kendaraan kota magelang",
-        ],
-        "jateng":   ["industri otomotif jawa tengah", "karoseri jateng"],
-        "nasional": ["produksi kendaraan indonesia 2026", "ekspor otomotif nasional"],
-    },
-    "Industri Furnitur": {
-        "magelang": [
-            "toko mebel kota magelang", "pabrik furnitur kota magelang",
-            "furnitur kayu kota magelang",
-        ],
-        "jateng":   ["industri furnitur jawa tengah", "mebel jateng"],
-        "nasional": ["ekspor furnitur indonesia 2026"],
-    },
-    # ★ BARU — dari spreadsheet, belum ada di kode sebelumnya
-    "Industri Pengolahan Lainnya, Jasa Reparasi, Pemasangan Mesin dan Peralatan": {
-        "magelang": [
-            "masker kota magelang", "produksi tas kota magelang",
-            "asesoris kota magelang", "harga bahan baku asesoris",
-            "harga asesoris kota magelang",
-        ],
-        "jateng":   ["harga bahan baku asesoris jawa tengah"],
-        "nasional": ["impor bahan baku nasional", "ekspor bahan baku nasional"],
-    },
-    # ── KATEGORI D, E, F ─────────────────────────────────────────────────────────
-    "Ketenagalistrikan": {
-        "magelang": [
-            "PLN kota magelang", "konsumsi listrik kota magelang",
-            "tarif listrik kota magelang", "pelanggan listrik kota magelang",
-            "es kristal kota magelang",
-        ],
-        "jateng":   ["listrik jawa tengah", "PLN jateng", "ketenagalistrikan jateng"],
-        "nasional": ["produksi listrik indonesia 2026", "bauran energi nasional"],
-    },
-    "Pengadaan Gas dan Produksi Es": {
-        "magelang": [
-            "harga LPG kota magelang", "pangkalan gas kota magelang",
-            "pabrik es kota magelang", "es kristal kota magelang",
-            "bank sampah kota magelang", "limbah kota magelang",
-        ],
-        "jateng":   ["jaringan gas jawa tengah", "LPG jateng"],
-        "nasional": ["harga LPG nasional 2026", "subsidi gas elpiji"],
-    },
-    "Pengadaan Air": {
-        "magelang": [
-            "PDAM kota magelang", "tarif air kota magelang",
-            "pasokan air bersih kota magelang", "pemakaian air bersih kota magelang",
-        ],
-        "jateng":   ["PDAM jawa tengah", "air bersih jateng"],
-        "nasional": ["akses air bersih indonesia 2026"],
-    },
-    "Konstruksi": {
-        "magelang": [
-            "proyek pemkot magelang", "infrastruktur kota magelang",
-            "pembangunan jalan kota magelang", "gedung kota magelang",
-            "anggaran pembangunan kota magelang", "pembangunan rumah sakit kota magelang",
-            "instalasi rumah sakit kota magelang", "pembangunan rsud kota magelang",
-            "pembangunan untidar kota magelang", "pembangunan kampus kota magelang",
-            "talud kota magelang", "jalan kota magelang", "apbd kota magelang",
-        ],
-        "jateng":   ["konstruksi jawa tengah", "proyek infrastruktur jateng", "realisasi apbd jateng"],
-        "nasional": ["realisasi APBN infrastruktur 2026", "konstruksi nasional"],
-    },
-    # ── KATEGORI G, H, I ─────────────────────────────────────────────────────────
-    "Perdagangan Mobil, Sepeda Motor dan Reparasinya": {
-        "magelang": [
-            "penjualan motor kota magelang", "dealer mobil kota magelang",
-            "bengkel resmi kota magelang", "ekspor kota magelang",
-            "impor kota magelang", "harga sembako kota magelang",
-        ],
-        "jateng": [
-            "penjualan kendaraan jawa tengah", "otomotif jateng",
-            "ekspor jawa tengah", "impor jawa tengah",
-        ],
-        "nasional": [
-            "penjualan mobil motor indonesia 2026", "gaikindo 2026",
-            "ekspor nasional", "impor nasional",
-        ],
-    },
-    "Perdagangan Besar dan Eceran": {
-        "magelang": [
-            "pasar rejowinangun kota magelang", "pasar tradisional kota magelang",
-            "toko ritel kota magelang", "omzet pedagang kota magelang",
-            "pasar murah kota magelang", "event olahraga kota magelang",
-            "event kegiatan hari jadi kota magelang",
-        ],
-        "jateng":   ["perdagangan jawa tengah", "pasar tradisional jateng", "harga sembako jateng"],
-        "nasional": ["perdagangan ritel indonesia 2026", "omzet pasar nasional"],
-    },
-    "Angkutan Rel": {
-        "magelang": [
-            "stasiun kota magelang", "kereta api kota magelang",
-            "reaktivasi jalur kereta kota magelang",
-        ],
-        "jateng":   ["penumpang kereta daop 6", "volume barang KAI jawa tengah"],
-        "nasional": ["penumpang KAI 2026", "volume angkutan kereta nasional"],
-    },
-    "Angkutan Darat": {
-        "magelang": [
-            "terminal tidar kota magelang", "angkutan umum kota magelang",
-            "bus kota magelang", "penumpang angkutan kota magelang",
-            "angkutan gratis kota magelang",
-        ],
-        "jateng":   ["angkutan darat jawa tengah", "bus AKDP jateng"],
-        "nasional": ["angkutan darat indonesia 2026"],
-    },
-    "Angkutan Laut": {
-        "magelang": ["logistik laut kota magelang", "pengiriman barang laut kota magelang"],
-        "jateng":   ["pelabuhan semarang", "angkutan laut jawa tengah"],
-        "nasional": ["angkutan laut indonesia 2026", "pelabuhan tanjung priok"],
-    },
-    "Angkutan Udara": {
-        "magelang": ["agen tiket pesawat kota magelang", "travel udara kota magelang"],
-        "jateng":   ["bandara ahmad yani semarang", "penerbangan jawa tengah", "bandara adi soemarmo"],
-        "nasional": ["penumpang pesawat indonesia 2026", "maskapai domestik"],
-    },
-    "Pergudangan dan Jasa Penunjang Angkutan": {
-        "magelang": [
-            "gudang kota magelang", "jasa kurir kota magelang",
-            "ekspedisi kota magelang", "pos kota magelang", "parkir kota magelang",
-        ],
-        "jateng":   ["logistik jawa tengah", "pergudangan jateng"],
-        "nasional": ["logistik nasional 2026", "biaya logistik indonesia"],
-    },
-    "Penyediaan Akomodasi": {
-        "magelang": [
-            "tingkat hunian hotel kota magelang", "penginapan kota magelang",
-            "hotel berbintang kota magelang", "akomodasi kota magelang",
-            "retreat di kota magelang", "wisuda jurit akmil kota magelang",
-            "pelaksanaan event lari kota magelang",
-        ],
-        "jateng":   ["hotel jawa tengah", "pariwisata akomodasi jateng", "Borobudur Marathon"],
-        "nasional": ["tingkat hunian hotel nasional 2026"],
-    },
-    "Penyediaan Makan Minum": {
-        "magelang": [
-            "restoran kota magelang", "pajak restoran kota magelang",
-            "kafe kota magelang", "kuliner kota magelang",
-            "retreat di kota magelang", "wisuda jurit akmil kota magelang",
-            "pelaksanaan event olahraga", "pelaksanaan event lari kota magelang",
-        ],
-        "jateng":   ["restoran jawa tengah", "UMKM kuliner jateng", "Borobudur Marathon"],
-        "nasional": ["industri kuliner indonesia 2026"],
-    },
-    # ── KATEGORI J, K, L, dst ────────────────────────────────────────────────────
-    "Informasi dan Komunikasi": {
-        "magelang": [
-            "pengguna internet kota magelang", "provider telekomunikasi kota magelang",
-            "warnet kota magelang", "wifi kota magelang",
-        ],
-        "jateng":   ["internet jawa tengah", "telekomunikasi jateng"],
-        "nasional": ["industri digital indonesia 2026", "pengguna internet nasional"],
-    },
-    "Jasa Perantara Keuangan": {
-        "magelang": [
-            "kredit bank kota magelang", "penyaluran KUR kota magelang",
-            "bank daerah kota magelang", "kredit umkm kota magelang",
-        ],
-        "jateng":   ["perbankan jawa tengah", "NPL bank jateng", "kredit UMKM jateng"],
-        "nasional": ["kredit perbankan nasional 2026", "suku bunga bank indonesia"],
-    },
-    "Asuransi dan Dana Pensiun": {
-        "magelang": [
-            "klaim asuransi kota magelang", "asuransi kota magelang",
-            "BPJS ketenagakerjaan kota magelang", "BPJS kesehatan kota magelang",
-        ],
-        "jateng":   ["asuransi jawa tengah", "BPJS jateng"],
-        "nasional": ["industri asuransi indonesia 2026"],
-    },
-    "Jasa Keuangan Lainnya": {
-        "magelang": [
-            "koperasi kota magelang", "pegadaian kota magelang",
-            "pinjol kota magelang", "money changer kota magelang",
-            "saham kota magelang",
-        ],
-        "jateng":   ["koperasi jawa tengah", "fintech jateng"],
-        "nasional": ["fintech indonesia 2026", "pinjaman online nasional"],
-    },
-    "Real Estate": {
-        "magelang": [
-            "harga perumahan kota magelang", "jual beli rumah kota magelang",
-            "properti kota magelang", "ruko kota magelang",
-            "sewa rumah kota magelang", "sewa tenant kota magelang",
-        ],
-        "jateng":   ["properti jawa tengah", "harga tanah jateng"],
-        "nasional": ["properti indonesia 2026", "harga rumah nasional"],
-    },
-    "Jasa Perusahaan": {
-        "magelang": [
-            "konsultan kota magelang", "jasa advertising kota magelang",
-            "jasa keamanan kota magelang", "pemilu kota magelang",
-            "agen perjalanan kota magelang", "notaris advokat kota magelang",
-            "event organizer kota magelang", "pameran kota magelang",
-            "event lari kota magelang", "percetakan kota magelang",
-        ],
-        "jateng":   ["jasa perusahaan jawa tengah", "agen outsourcing jateng", "Borobudur Marathon"],
-        "nasional": ["jasa bisnis indonesia 2026"],
-    },
-    "Administrasi Pemerintahan dan Jaminan Sosial": {
-        "magelang": [
-            "APBD kota magelang", "belanja daerah pemkot magelang",
-            "belanja pegawai pemkot magelang", "pajak daerah kota magelang",
-            "asn kota magelang",
-        ],
-        "jateng":   ["pemerintah jawa tengah", "APBD jateng"],
-        "nasional": ["realisasi APBN 2026", "belanja pemerintah nasional"],
-    },
-    "Jasa Pendidikan": {
-        "magelang": [
-            "sekolah negeri kota magelang", "biaya pendidikan kota magelang",
-            "universitas di kota magelang", "jumlah murid kota magelang",
-            "pendidikan kota magelang",
-        ],
-        "jateng":   ["pendidikan jawa tengah", "APK sekolah jateng"],
-        "nasional": ["anggaran pendidikan indonesia 2026"],
-    },
-    "Jasa Kesehatan dan Kegiatan Sosial": {
-        "magelang": [
-            "RSUD kota magelang", "pasien rumah sakit kota magelang",
-            "kesehatan warga kota magelang", "kunjungan rumah sakit kota magelang",
-            "bpjs kesehatan kota magelang", "layanan puskesmas kota magelang",
-        ],
-        "jateng":   ["kesehatan jawa tengah", "stunting jateng", "fasilitas kesehatan jateng"],
-        "nasional": ["kesehatan nasional 2026", "JKN BPJS nasional"],
-    },
-    "Jasa Lainnya": {
-        "magelang": [
-            "wisata taman kyai langgeng kota magelang", "kunjungan wisatawan kota magelang",
-            "salon kota magelang", "pajak hiburan kota magelang",
-            "fasilitas olahraga kota magelang", "laundry kota magelang",
-            "karaoke kota magelang", "bioskop kota magelang",
-            "penyelenggaraan olahraga kota magelang",
-        ],
-        "jateng":   ["pariwisata jawa tengah", "wisatawan jateng"],
-        "nasional": ["pariwisata indonesia 2026"],
-    },
-    "PRODUK DOMESTIK BRUTO": {
-        "magelang": ["pertumbuhan ekonomi kota magelang", "PDRB kota magelang", "inflasi kota magelang"],
-        "jateng":   ["PDRB jawa tengah", "pertumbuhan ekonomi jateng", "inflasi jateng"],
-        "nasional": ["PDB indonesia 2026", "pertumbuhan ekonomi nasional triwulan", "inflasi nasional"],
-    },
-}
+# ─── PATH FILE JSON KEYWORD DINAMIS ────────────────────────────────────────────
+# Disimpan di folder radar/ (sejajar dengan file ini)
+_KEYWORDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keywords.json")
 
 
+def _load_keywords() -> dict:
+    """
+    Load keyword dictionary.
+    Membaca dari keywords.json. Jika file tidak ada/rusak, kembalikan dictionary kosong.
+    """
+    if os.path.exists(_KEYWORDS_PATH):
+        try:
+            with open(_KEYWORDS_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                print(f"✅ [Keywords] Dimuat dari {_KEYWORDS_PATH}")
+                return data
+        except Exception as e:
+            print(f"⚠️ [Keywords] Gagal baca keywords.json: {e}. Menggunakan dictionary kosong.")
+            return {}
+    return {}
+
+
+def _save_keywords(data: dict):
+    """
+    Simpan keyword dictionary ke file keywords.json.
+    Dipanggil dari Tab 5 (Kelola Keyword) di app.py.
+    """
+    try:
+        with open(_KEYWORDS_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"✅ [Keywords] Disimpan ke {_KEYWORDS_PATH}")
+    except Exception as e:
+        raise IOError(f"Gagal menyimpan keywords: {e}")
+
+# Load data keyword saat file ini dijalankan
+KEYWORD_DICT = _load_keywords()
+
+# ─── FUNGSI EXPANSION ─────────────────────────────────────────────────────────
 def expand_query_dari_dict(nama_kategori: str) -> dict | None:
     """
-    Cari keyword dari static dictionary.
+    Cari keyword dari dictionary (JSON atau bawaan).
+    Selalu baca fresh dari _load_keywords() agar perubahan Tab 5 langsung aktif.
     Return dict {magelang, jateng, nasional} atau None jika tidak ditemukan.
     """
+    kw_dict = _load_keywords()
+
     # Coba exact match dulu
-    if nama_kategori in KEYWORD_DICT:
-        return KEYWORD_DICT[nama_kategori]
+    if nama_kategori in kw_dict:
+        return kw_dict[nama_kategori]
 
     # Coba partial match (case-insensitive)
     nama_lower = nama_kategori.lower()
-    for key, val in KEYWORD_DICT.items():
+    for key, val in kw_dict.items():
         if nama_lower in key.lower() or key.lower() in nama_lower:
             return val
 
     return None
 
-
-def expand_query_via_ai(nama_kategori: str, api_key: str) -> dict:
+def expand_query_via_ai(nama_kategori: str, api_keys: str) -> dict:
     """
     Fallback: generate keyword menggunakan AI jika tidak ada di dictionary.
     Dipakai untuk kategori yang sangat spesifik atau tidak dikenal.
+    PERBAIKAN: Mendukung Multiple API Keys
     """
-    client = Groq(api_key=api_key)
+    # Memecah api_keys jika berbentuk list string panjang, lalu ambil key pertama yang aktif
+    first_key = api_keys.split(",")[0].strip() if api_keys else ""
+    if not first_key:
+        print("   ⚠️ Groq API Key kosong, menggunakan keyword generik.")
+        return _bikin_keyword_generik(nama_kategori)
+
+    client = Groq(api_key=first_key)
     prompt = f"""Kamu adalah asisten riset BPS (Badan Pusat Statistik) Indonesia.
 Tugasmu: ubah kategori PDRB berikut menjadi keyword pencarian berita jurnalistik.
 
@@ -553,15 +111,31 @@ ATURAN PENTING:
             max_tokens=500,
             response_format={"type": "json_object"}
         )
-        return json.loads(resp.choices[0].message.content)
+        # Jangan lupa simpan hasil AI ke JSON agar besok tidak perlu tembak API lagi
+        hasil_ai = json.loads(resp.choices[0].message.content)
+        
+        # Auto-simpan ke keywords.json
+        kw_data = _load_keywords()
+        kw_data[nama_kategori] = hasil_ai
+        _save_keywords(kw_data)
+        print(f"   💾 Hasil AI untuk '{nama_kategori}' berhasil disimpan ke keywords.json")
+        
+        return hasil_ai
+        
     except Exception as e:
         print(f"   ⚠️ AI Query Expansion gagal: {e}. Pakai keyword generik.")
-        kata = nama_kategori.lower().replace(",", "").replace("dan", "").strip()
-        return {
-            "magelang": [f"{kata} kota magelang", f"kondisi {kata} kota magelang"],
-            "jateng":   [f"{kata} jawa tengah", f"{kata} jateng"],
-            "nasional": [f"{kata} indonesia 2026", f"{kata} nasional"],
-        }
+        return _bikin_keyword_generik(nama_kategori)
+
+
+
+def _bikin_keyword_generik(nama_kategori: str) -> dict:
+    """Fungsi pembantu untuk membuat keyword darurat jika AI gagal."""
+    kata = nama_kategori.lower().replace(",", "").replace("dan", "").strip()
+    return {
+        "magelang": [f"{kata} kota magelang", f"kondisi {kata} kota magelang"],
+        "jateng":   [f"{kata} jawa tengah", f"{kata} jateng"],
+        "nasional": [f"{kata} indonesia 2026", f"{kata} nasional"],
+    }
 
 
 def dapatkan_keywords(nama_kategori: str, api_key: str) -> dict:

@@ -19,7 +19,7 @@ from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya
 
 load_dotenv()
 
-# [PERBAIKAN] Membaca kunci API Jamak (Pooling) memprioritaskan yang pakai "S"
+# Membaca kunci API Jamak (Pooling) memprioritaskan yang pakai "S"
 GROQ_KEYS     = os.environ.get("GROQ_API_KEYS", os.environ.get("GROQ_API_KEY", ""))
 GEMINI_KEYS   = os.environ.get("GEMINI_API_KEYS", os.environ.get("GEMINI_API_KEY", ""))
 CEREBRAS_KEYS = os.environ.get("CEREBRAS_API_KEYS", os.environ.get("CEREBRAS_API_KEY", ""))
@@ -51,6 +51,7 @@ def _jalankan_pipeline_satu_level(
     triwulan: str,
     min_skor: int = 6,
     paksa_proses_ulang: bool = False,
+    callback_log=None,
 ) -> list[dict]:
     """
     Jalankan pipeline untuk 1 level wilayah.
@@ -59,12 +60,20 @@ def _jalankan_pipeline_satu_level(
     wilayah_nama = level_cfg["nama"]
     wilayah_key  = level_cfg["key"]
 
+    # ─── Helper log lokal ───
+    def _log(pesan: str):
+        print(pesan)
+        if callback_log:
+            callback_log(pesan)
+
     print(f"\n{'='*55}")
     print(f"  🌍 Level Wilayah: {wilayah_nama}")
     print(f"{'='*55}")
 
     # Terapkan fungsi replace untuk perlindungan Kota/Kabupaten Magelang
     keyword_list = siapkan_keyword_fallback(level_cfg, keywords_dict)
+
+    _log(f"🔍 Mencari di {wilayah_nama} ({len(keyword_list)} keyword)...")
 
     # Bungkus ke dalam dictionary agar formatnya sesuai dengan input searcher.py
     keywords_siap = {wilayah_key: keyword_list}
@@ -74,8 +83,10 @@ def _jalankan_pipeline_satu_level(
         keywords_siap, wilayah_key, tanggal_mulai, tanggal_selesai
     )
     if not hasil_search:
-        print(f"  ⚠️ 0 artikel ditemukan di {wilayah_nama}")
+        _log(f"⚠️ 0 artikel ditemukan di {wilayah_nama}")
         return []
+
+    _log(f"📰 {len(hasil_search)} artikel dari search engine")
 
     # Gerbang 3: Filter URL sudah ada di DB
     list_url = [item["url"] for item in hasil_search]
@@ -87,17 +98,22 @@ def _jalankan_pipeline_satu_level(
             print(f"     • {w['judul'][:60]} → {w['pesan']}")
 
     if not url_baru:
-        print("  ⚠️ Semua URL sudah ada di database atau tidak lolos sebelumnya")
+        _log("⚠️ Semua URL sudah ada di database — dilewati")
         return []
 
-    print(f"\n  🔗 URL baru/diproses ulang: {len(url_baru)} dari {len(list_url)}")
+    _log(f"🔗 {len(url_baru)} URL baru akan diproses (dari {len(list_url)} total)")
 
     # Gerbang 4: Parallel Scraping
+    _log(f"📥 Scraping {len(url_baru)} artikel secara paralel...")
     artikel_scraped = fetch_parallel(url_baru, max_workers=5)
     if not artikel_scraped:
+        _log("⚠️ Semua URL gagal di-scrape")
         return []
 
+    _log(f"📄 {len(artikel_scraped)}/{len(url_baru)} artikel berhasil di-scrape")
+
     # Gerbang 5: AI Screening
+    _log(f"🤖 AI screening {len(artikel_scraped)} artikel...")
     lolos, tidak_lolos = screening_batch(
         api_keys=API_KEYS_DICT,
         list_artikel=artikel_scraped,
@@ -106,9 +122,9 @@ def _jalankan_pipeline_satu_level(
         min_skor=min_skor
     )
 
-    # Simpan semua ke database (baik yang lolos maupun tidak)
-    url_to_meta = {item["url"]: item for item in hasil_search}
+    _log(f"✅ Screening selesai: {len(lolos)} lolos | {len(tidak_lolos)} tidak lolos")
 
+    # Simpan semua ke database (baik yang lolos maupun tidak)
     for artikel in lolos + tidak_lolos:
         url   = artikel.get("url", "")
         judul = artikel.get("judul", "")
@@ -139,6 +155,7 @@ def scan_kategori(
     paksa_proses_ulang: bool = False,
     scan_semua_level: bool = True,
     target_minimal: int = 3,
+    callback_log=None,
 ) -> dict:
     """
     Fungsi utama RADAR untuk scan 1 kategori PDRB.
@@ -151,19 +168,33 @@ def scan_kategori(
         print(f"  🔄 MODE: Paksa Proses Ulang Aktif!")
     print(f"{'#'*55}")
 
+    # ─── Helper log lokal ───
+    def _log(pesan: str):
+        print(pesan)
+        if callback_log:
+            callback_log(pesan)
+
     inisialisasi_database()
     triwulan = _hitung_triwulan(tanggal_mulai)
 
+    _log(f"🎯 Target: {nama_kategori} | {tanggal_mulai} s.d. {tanggal_selesai}")
+
     # Gerbang 1: Query Expansion
-    print(f"\n[1/6] 🔍 Menerjemahkan kategori ke keyword...")
+    _log("🔑 Menerjemahkan kategori ke keyword pencarian...")
     keywords = dapatkan_keywords(nama_kategori, GROQ_KEYS)
+    _log(
+        f"✅ Keyword siap — "
+        f"Kota: {len(keywords.get('magelang', []))}, "
+        f"Jateng: {len(keywords.get('jateng', []))}, "
+        f"Nasional: {len(keywords.get('nasional', []))}"
+    )
 
     semua_artikel_valid = []
     level_sekarang = 0
 
     for level_cfg in URUTAN_FALLBACK:
         level_sekarang = level_cfg["level"]
-        print(f"\n[Level {level_sekarang}/{len(URUTAN_FALLBACK)}] Pipeline: {level_cfg['nama']}")
+        _log(f"\n🌍 [Level {level_sekarang}/{len(URUTAN_FALLBACK)}] Memindai: {level_cfg['nama']}...")
 
         lolos = _jalankan_pipeline_satu_level(
             nama_kategori=nama_kategori,
@@ -174,13 +205,16 @@ def scan_kategori(
             triwulan=triwulan,
             min_skor=min_skor,
             paksa_proses_ulang=paksa_proses_ulang,
+            callback_log=callback_log,
         )
 
         semua_artikel_valid.extend(lolos)
 
         if lolos:
-            print(f"\n  ✅ +{len(lolos)} artikel dari level {level_sekarang} ({level_cfg['nama']})")
-            print(f"     Total terkumpul: {len(semua_artikel_valid)} artikel")
+            _log(
+                f"✅ +{len(lolos)} artikel dari Level {level_sekarang} "
+                f"({level_cfg['nama']}). Total: {len(semua_artikel_valid)}"
+            )
 
         # Logika lanjut/berhenti
         if not aktifkan_fallback:
@@ -190,7 +224,7 @@ def scan_kategori(
             continue
         else:
             if len(semua_artikel_valid) >= target_minimal:
-                print(f"\n  ✅ Target minimal {target_minimal} artikel tercapai. Berhenti di level {level_sekarang}.")
+                _log(f"🎯 Target minimal {target_minimal} artikel tercapai. Berhenti di Level {level_sekarang}.")
                 break
 
     # Update status kategori di DB
@@ -230,6 +264,8 @@ def batch_scan_semua_kategori(
 ) -> dict:
     """
     Scan semua kategori PDRB secara berurutan.
+    Batch scan tidak menggunakan callback_log per-step (terlalu verbose).
+    Progress ditampilkan via callback_progress (per kategori).
     """
     print(f"\n{'#'*55}")
     print(f"  🚀 BATCH SCAN — {len(daftar_kategori)} kategori")
@@ -247,7 +283,8 @@ def batch_scan_semua_kategori(
             tanggal_selesai,
             min_skor,
             aktifkan_fallback=True,
-            paksa_proses_ulang=paksa_proses_ulang
+            paksa_proses_ulang=paksa_proses_ulang,
+            callback_log=None,  # Batch scan: log per-step tidak dikirim ke UI
         )
         hasil_per_kategori[kategori] = hasil
 

@@ -2,7 +2,6 @@
 """
 Modul B: Multi-Source Search Engine Integrator
 Sumber: DuckDuckGo News + Google News RSS + DuckDuckGo Web
-PERBAIKAN: Fix DDG package name + resolve Google News redirect URLs
 """
 
 import time
@@ -11,7 +10,7 @@ import base64
 import requests
 import feedparser
 from datetime import datetime
-from ddgs import DDGS   # ← DIPERBAIKI: dari duckduckgo_search → ddgs
+from ddgs import DDGS
 
 
 # ─── HELPER ────────────────────────────────────────────────────────────────────
@@ -120,8 +119,38 @@ def _deduplikasi(list_artikel: list[dict]) -> list[dict]:
             hasil.append(item)
     return hasil
 
+def _deduplikasi_judul(list_artikel: list[dict]) -> list[dict]:
+    """
+    Hapus artikel dengan judul yang sangat mirip (sindikasi berita).
+    Dua judul dianggap duplikat jika 80%+ kata-katanya sama.
+    """
+    def _normalize(s):
+        return set(re.sub(r'[^\w\s]', '', s.lower()).split())
+    
+    hasil = []
+    judul_seen = []
+    
+    for item in list_artikel:
+        judul = item.get("judul", "")
+        kata_judul = _normalize(judul)
+        
+        is_duplikat = False
+        for kata_lama in judul_seen:
+            if len(kata_judul) == 0 or len(kata_lama) == 0:
+                continue
+            irisan = len(kata_judul & kata_lama)
+            gabungan = len(kata_judul | kata_lama)
+            if irisan / gabungan > 0.8:  # Jaccard similarity > 80%
+                is_duplikat = True
+                break
+        
+        if not is_duplikat:
+            judul_seen.append(kata_judul)
+            hasil.append(item)
+    
+    return hasil
 
-def _buang_homepage(list_artikel: list[dict]) -> list[dict]:
+def _buang_homepage(list_artikel: list[dict], callback_log=None) -> list[dict]:
     """Filter homepage + URL Google News yang belum ter-resolve."""
     hasil = []
     for item in list_artikel:
@@ -129,9 +158,11 @@ def _buang_homepage(list_artikel: list[dict]) -> list[dict]:
         if not url:
             continue
 
-        # ─── PERBAIKAN: Buang URL Google News yang belum ter-resolve ───
+        # Buang URL Google News yang belum ter-resolve ───
         if "news.google.com" in url:
-            print(f"      [Filter] Buang URL Google belum ter-resolve: {url[:60]}")
+            pesan_gagal = f"      [Filter] Buang URL Google belum ter-resolve: {url[:60]}"
+            print(pesan_gagal)
+            if callback_log: callback_log(pesan_gagal)
             continue
 
         try:
@@ -141,7 +172,9 @@ def _buang_homepage(list_artikel: list[dict]) -> list[dict]:
             if len(path) >= 10:
                 hasil.append(item)
             else:
-                print(f"      [Filter] Buang homepage: {url}")
+                pesan_hp = f"      [Filter] Buang homepage: {url}"
+                print(pesan_hp)
+                if callback_log: callback_log(pesan_hp)
         except Exception:
             hasil.append(item)
     return hasil
@@ -153,7 +186,8 @@ def cari_duckduckgo_news(
     keywords: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 8
+    max_per_keyword: int = 8,
+    callback_log=None 
 ) -> list[dict]:
     """Sumber 1: DuckDuckGo News. Gratis unlimited."""
     hasil = []
@@ -166,8 +200,11 @@ def cari_duckduckgo_news(
     try:
         with DDGS() as ddgs:
             for keyword in keywords:
+                pesan_log = f"      [DDG News] '{keyword}'..."
+                print(pesan_log)
+                if callback_log: callback_log(pesan_log)
+                
                 try:
-                    print(f"      [DDG News] '{keyword}'...")
                     berita = list(ddgs.news(keyword, max_results=max_per_keyword, timelimit=timelimit))
                     for item in berita:
                         url = _normalisasi_url(item.get("url", ""))
@@ -182,7 +219,9 @@ def cari_duckduckgo_news(
                             })
                     time.sleep(1.0)
                 except Exception as e:
-                    print(f"      [DDG News] Error '{keyword}': {e}")
+                    pesan_err = f"      [DDG News] Error '{keyword}': {e}"
+                    print(pesan_err)
+                    if callback_log: callback_log(pesan_err)
                     time.sleep(3)
                     continue
     except Exception as e:
@@ -198,7 +237,8 @@ def cari_google_news_rss(
     keywords: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 10
+    max_per_keyword: int = 10,
+    callback_log=None 
 ) -> list[dict]:
     """
     Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED.
@@ -214,8 +254,11 @@ def cari_google_news_rss(
     }
 
     for keyword in keywords:
+        pesan_log = f"      [Google RSS] '{keyword}'..."
+        print(pesan_log)
+        if callback_log: callback_log(pesan_log)
+        
         try:
-            print(f"      [Google RSS] '{keyword}'...")
             keyword_encoded = requests.utils.quote(keyword)
             rss_url = (
                 f"https://news.google.com/rss/search"
@@ -264,7 +307,9 @@ def cari_google_news_rss(
             time.sleep(0.5)
 
         except Exception as e:
-            print(f"      [Google RSS] Error: {e}")
+            pesan_err = f"      [Google RSS] Error: {e}"
+            print(pesan_err)
+            if callback_log: callback_log(pesan_err)
             time.sleep(1)
             continue
 
@@ -278,7 +323,8 @@ def cari_duckduckgo_web(
     keywords: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 5
+    max_per_keyword: int = 5,
+    callback_log=None 
 ) -> list[dict]:
     """Sumber 3: DDG Web Search. Fallback jika News+RSS < 5 artikel."""
     hasil = []
@@ -287,9 +333,12 @@ def cari_duckduckgo_web(
     try:
         with DDGS() as ddgs:
             for keyword in keywords[:3]:
+                keyword_tahun = f"{keyword} {tahun}"
+                pesan_log = f"      [DDG Web] '{keyword_tahun}'..."
+                print(pesan_log)
+                if callback_log: callback_log(pesan_log)
+                
                 try:
-                    keyword_tahun = f"{keyword} {tahun}"
-                    print(f"      [DDG Web] '{keyword_tahun}'...")
                     web_results = list(ddgs.text(keyword_tahun, max_results=max_per_keyword))
                     for item in web_results:
                         url = _normalisasi_url(item.get("href", ""))
@@ -303,7 +352,9 @@ def cari_duckduckgo_web(
                             })
                     time.sleep(1)
                 except Exception as e:
-                    print(f"      [DDG Web] Error: {e}")
+                    pesan_err = f"      [DDG Web] Error: {e}"
+                    print(pesan_err)
+                    if callback_log: callback_log(pesan_err)
                     continue
     except Exception as e:
         print(f"      [DDG Web] Gagal inisialisasi: {e}")
@@ -318,7 +369,8 @@ def cari_berita_multi_sumber(
     keywords_per_wilayah: dict,
     wilayah: str,
     tanggal_mulai: str,
-    tanggal_selesai: str
+    tanggal_selesai: str,
+    callback_log=None 
 ) -> list[dict]:
     """Fungsi utama Modul B — 100% Gratis Unlimited."""
     keywords = keywords_per_wilayah.get(wilayah, [])
@@ -326,22 +378,36 @@ def cari_berita_multi_sumber(
         return []
 
     tampilan = "KOTA MAGELANG" if wilayah == "magelang" else wilayah.upper()
-    print(f"\n   📡 Mencari di wilayah: {tampilan} ({len(keywords)} keyword)")
-    print(f"   📅 Rentang: {tanggal_mulai} s.d. {tanggal_selesai}")
+    pesan_header = f"📡 Mencari di wilayah: {tampilan} ({len(keywords)} keyword) \n📅 Rentang: {tanggal_mulai} s.d. {tanggal_selesai}"
+    print(f"\n   {pesan_header}")
+    if callback_log: callback_log(pesan_header)
 
-    hasil_ddg = cari_duckduckgo_news(keywords, tanggal_mulai, tanggal_selesai)
-    hasil_rss = cari_google_news_rss(keywords, tanggal_mulai, tanggal_selesai)
+    hasil_ddg = cari_duckduckgo_news(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
+    hasil_rss = cari_google_news_rss(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
 
+    # Lapis 1: Hapus URL yang persis sama
     gabungan = _deduplikasi(hasil_ddg + hasil_rss)
+    
+    # Lapis 2: Hapus artikel yang judulnya 80% mirip (DIPASANG DI SINI)
+    gabungan = _deduplikasi_judul(gabungan)
 
-    # ─── PERBAIKAN TAMBAHAN: Buang homepage sebelum scraping ───
-    gabungan = _buang_homepage(gabungan)
+    # Lapis 3: Buang homepage sebelum masuk scraping
+    gabungan = _buang_homepage(gabungan, callback_log=callback_log)
 
     if len(gabungan) < 5:
-        print(f"   ⚠️ Gabungan DDG+RSS hanya {len(gabungan)} → aktifkan DDG Web...")
-        hasil_web = cari_duckduckgo_web(keywords, tanggal_mulai, tanggal_selesai)
+        pesan_fallback = f"⚠️ Gabungan DDG+RSS hanya {len(gabungan)} → aktifkan DDG Web..."
+        print(f"   {pesan_fallback}")
+        if callback_log: callback_log(pesan_fallback)
+        
+        hasil_web = cari_duckduckgo_web(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
+        
+        # Terapkan 3 lapis filter yang sama jika Fallback Web menyala
         gabungan  = _deduplikasi(gabungan + hasil_web)
-        gabungan  = _buang_homepage(gabungan)
+        gabungan  = _deduplikasi_judul(gabungan)
+        gabungan  = _buang_homepage(gabungan, callback_log=callback_log)
 
-    print(f"\n   📦 Total unik artikel (sudah filter homepage): {len(gabungan)}")
+    pesan_akhir = f"📦 Total unik artikel (filter URL, Judul Mirip & Homepage): {len(gabungan)}"
+    print(f"\n   {pesan_akhir}")
+    if callback_log: callback_log(pesan_akhir)
+    
     return gabungan

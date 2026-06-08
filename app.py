@@ -1,22 +1,25 @@
 # File: app.py
+import re
 import streamlit as st
 import pandas as pd
 import os
 import time
 import json
 import io
-import altair as alt # Tambahan untuk Visualisasi Keren
+import altair as alt
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
+from radar.query_expander import dapatkan_keywords, _load_keywords, _save_keywords
 from radar.database import (
     inisialisasi_database,
     ambil_semua_status_kategori,
     ambil_artikel_valid,
     tandai_artikel_diekstrak,
-    tandai_artikel_ditolak
+    tandai_artikel_ditolak,
+    simpan_hasil_ekstraksi,
+    get_connection
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
 from scraper import scrape_berita
@@ -30,7 +33,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Custom yang Diperbaiki (Support Dark Mode / Light Mode otomatis)
+# CSS Custom (Support Dark Mode / Light Mode otomatis)
 st.markdown("""
 <style>
 .kartu-artikel {
@@ -104,14 +107,16 @@ def _buat_excel_ekstraksi(json_final: dict) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Ekstraksi Fenomena"
-    header_fill   = PatternFill("solid", fgColor="003366")   
-    header_font   = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
-    subheader_fill = PatternFill("solid", fgColor="DDEEFF")   
+    header_fill    = PatternFill("solid", fgColor="003366")
+    subheader_fill = PatternFill("solid", fgColor="DDEEFF")
     subheader_font = Font(name="Calibri", bold=True, color="003366", size=10)
-    isi_font      = Font(name="Calibri", size=10)
-    border_tipis  = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
-    wrap_align    = Alignment(wrap_text=True, vertical="top")
-    center_align  = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    isi_font       = Font(name="Calibri", size=10)
+    border_tipis   = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"),  bottom=Side(style="thin")
+    )
+    wrap_align   = Alignment(wrap_text=True, vertical="top")
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     ws.merge_cells("A1:C1")
     ws["A1"] = "FORMULIR EKSTRAKSI FENOMENA EKONOMI — BPS KOTA MAGELANG"
@@ -130,35 +135,66 @@ def _buat_excel_ekstraksi(json_final: dict) -> bytes:
     headers = ["No.", "Variabel BPS", "Hasil Ekstraksi (Bisa Diedit)"]
     for col_idx, h in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col_idx, value=h)
-        cell.font = subheader_font; cell.fill = subheader_fill; cell.border = border_tipis; cell.alignment = center_align
+        cell.font      = subheader_font
+        cell.fill      = subheader_fill
+        cell.border    = border_tipis
+        cell.alignment = center_align
     ws.row_dimensions[4].height = 22
 
     LABEL_MAP = [
-        ("tema_topik", "1. Tema / Topik"), ("judul_dan_tanggal", "2. Judul & Tanggal Terbit"),
-        ("sumber_dan_link", "3. Sumber & Link Media"), ("ringkasan_fenomena", "4. Ringkasan Fenomena"),
-        ("data_angka", "5. Data Angka Kuantitatif"), ("kutipan_tokoh", "6. Kutipan Tokoh / Narasumber"),
-        ("lokasi_spesifik", "7. Lokasi Spesifik"), ("intervensi_pemerintah", "8. Intervensi Pemerintah"),
-        ("periode_kejadian", "9. Periode Kejadian"), ("kata_kunci", "10. Kata Kunci / Hashtag"),
-        ("sentimen_dampak", "11. Sentimen Dampak"), ("kategori_perbandingan", "12. Kategori Perbandingan"),
+        ("tema_topik",            "1. Tema / Topik"),
+        ("judul_dan_tanggal",     "2. Judul & Tanggal Terbit"),
+        ("sumber_dan_link",       "3. Sumber & Link Media"),
+        ("ringkasan_fenomena",    "4. Ringkasan Fenomena"),
+        ("data_angka",            "5. Data Angka Kuantitatif"),
+        ("kutipan_tokoh",         "6. Kutipan Tokoh / Narasumber"),
+        ("lokasi_spesifik",       "7. Lokasi Spesifik"),
+        ("intervensi_pemerintah", "8. Intervensi Pemerintah"),
+        ("periode_kejadian",      "9. Periode Kejadian"),
+        ("kata_kunci",            "10. Kata Kunci / Hashtag"),
+        ("sentimen_dampak",       "11. Sentimen Dampak"),
+        ("kategori_perbandingan", "12. Kategori Perbandingan"),
     ]
-    warna_ganjil = PatternFill("solid", fgColor="F7FAFF"); warna_genap = PatternFill("solid", fgColor="FFFFFF")
+    warna_ganjil = PatternFill("solid", fgColor="F7FAFF")
+    warna_genap  = PatternFill("solid", fgColor="FFFFFF")
 
     for i, (key, label) in enumerate(LABEL_MAP):
-        row = i + 5
-        nilai = json_final.get(key, "")
-        if isinstance(nilai, (dict, list)): nilai = json.dumps(nilai, ensure_ascii=False, indent=2)
+        row        = i + 5
+        nilai      = json_final.get(key, "")
+        if isinstance(nilai, (dict, list)):
+            nilai = json.dumps(nilai, ensure_ascii=False, indent=2)
         fill_baris = warna_ganjil if i % 2 == 0 else warna_genap
 
-        c_no = ws.cell(row=row, column=1, value=i+1); c_no.font = Font(name="Calibri", size=10, bold=True); c_no.alignment = center_align; c_no.border = border_tipis; c_no.fill = fill_baris
-        c_var = ws.cell(row=row, column=2, value=label); c_var.font = Font(name="Calibri", size=10, bold=True, color="003366"); c_var.alignment = Alignment(vertical="top", wrap_text=True); c_var.border = border_tipis; c_var.fill = fill_baris
-        c_val = ws.cell(row=row, column=3, value=str(nilai)); c_val.font = isi_font; c_val.alignment = wrap_align; c_val.border = border_tipis; c_val.fill = fill_baris
+        c_no  = ws.cell(row=row, column=1, value=i+1)
+        c_no.font      = Font(name="Calibri", size=10, bold=True)
+        c_no.alignment = center_align
+        c_no.border    = border_tipis
+        c_no.fill      = fill_baris
 
-        if key in ["ringkasan_fenomena", "kutipan_tokoh", "data_angka", "intervensi_pemerintah"]: ws.row_dimensions[row].height = 80
-        else: ws.row_dimensions[row].height = 25
+        c_var  = ws.cell(row=row, column=2, value=label)
+        c_var.font      = Font(name="Calibri", size=10, bold=True, color="003366")
+        c_var.alignment = Alignment(vertical="top", wrap_text=True)
+        c_var.border    = border_tipis
+        c_var.fill      = fill_baris
 
-    ws.column_dimensions["A"].width = 6; ws.column_dimensions["B"].width = 32; ws.column_dimensions["C"].width = 75
+        c_val  = ws.cell(row=row, column=3, value=str(nilai))
+        c_val.font      = isi_font
+        c_val.alignment = wrap_align
+        c_val.border    = border_tipis
+        c_val.fill      = fill_baris
+
+        if key in ["ringkasan_fenomena", "kutipan_tokoh", "data_angka", "intervensi_pemerintah"]:
+            ws.row_dimensions[row].height = 80
+        else:
+            ws.row_dimensions[row].height = 25
+
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 32
+    ws.column_dimensions["C"].width = 75
     ws.freeze_panes = "A5"
-    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
     return buf.getvalue()
 
 # ─── SESSION STATE ────────────────────────────────────────────────────────────
@@ -167,7 +203,7 @@ for key, default in [
     ("hasil_ekstraksi", None),
     ("ekstraksi_url_aktif", ""),
     ("json_final_siap", None),
-    ("kategori_terpilih_antrean", "— Pilih Kategori —") 
+    ("kategori_terpilih_antrean", "— Pilih Kategori —")
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -176,7 +212,7 @@ for key, default in [
 with st.sidebar:
     if os.path.exists("logo_bps_magelang.png"):
         st.image("logo_bps_magelang.png", use_container_width=True)
-    
+
     st.markdown("""
     <div style="margin-top: -10px; margin-bottom: 20px;">
         <h1 style="font-size: 2.8rem; font-weight: 900; margin-bottom: 0px; line-height: 1.1;">✒️ SI-PENA</h1>
@@ -190,8 +226,8 @@ with st.sidebar:
     st.markdown("### 📅 Rentang Waktu Pencarian")
     default_end   = datetime.now()
     default_start = default_end - timedelta(days=90)
-    tanggal_mulai   = st.date_input("Dari Tanggal", default_start, help="Batas awal berita diterbitkan.")
-    tanggal_selesai = st.date_input("Sampai Tanggal", default_end, help="Batas akhir berita diterbitkan.")
+    tanggal_mulai   = st.date_input("Dari Tanggal",    default_start, help="Batas awal berita diterbitkan.")
+    tanggal_selesai = st.date_input("Sampai Tanggal",  default_end,   help="Batas akhir berita diterbitkan.")
 
     if tanggal_mulai > tanggal_selesai:
         st.error("Tanggal mulai tidak boleh setelah tanggal selesai!")
@@ -201,30 +237,31 @@ with st.sidebar:
 
     st.markdown("### 🎛️ Pengaturan AI Radar")
     min_skor    = st.slider("Skor Minimum Lolos", 1, 10, 6,
-                            help="Filter seberapa ketat AI menyeleksi berita. Angka 6 disarankan untuk membuang berita opini tanpa angka.")
+                            help="Filter seberapa ketat AI menyeleksi berita.")
     paksa_ulang = st.toggle("🔄 Proses Ulang Artikel Lama", value=False,
-                            help="PENTING: Jika diaktifkan, Radar akan men-scan ulang berita yang di masa lalu pernah ditolak atau gagal. Matikan untuk menghemat kuota AI.")
+                            help="Jika diaktifkan, Radar akan men-scan ulang berita yang pernah ditolak/gagal.")
     scan_semua  = st.toggle("🌐 Scan Semua Level Wilayah", value=True,
-                            help="Jika dinonaktifkan, AI akan berhenti mencari jika di level Kota/Kabupaten sudah menemukan minimal 3 berita.")
+                            help="Jika dinonaktifkan, AI berhenti jika sudah menemukan minimal 3 berita.")
 
     st.markdown("---")
     st.markdown("### 🚦 Status Pasukan AI (Pool)")
     st.caption("Aplikasi ini menggunakan sistem Load Balancing. AI akan otomatis berganti kunci jika terjadi limit.")
-    for nama, key_val in [("Groq", KEYS["groq"]), ("Cerebras", KEYS["cerebras"]), 
+    for nama, key_val in [("Groq", KEYS["groq"]), ("Cerebras", KEYS["cerebras"]),
                            ("Gemini", KEYS["gemini"]), ("Mistral", KEYS["mistral"])]:
         jumlah = _hitung_kunci(key_val)
         status = f"🟢 {jumlah} Amunisi Siap" if jumlah > 0 else "🔴 Kosong"
         st.caption(f"**{nama}:** {status}")
-    
+
     st.markdown("---")
     st.caption("v1.0 | Made with ❤️ by BPS Kota Magelang")
 
-# ─── MAIN TABS (DITAMBAH TAB 4) ───────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+# ─── MAIN TABS ───────────────────────────────────────────────────────────────
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📡 RADAR BERITA",
     "📝 EKSTRAKTOR FENOMENA",
     "🗄️ HISTORY BERITA",
-    "📈 DASHBOARD ANALISIS"
+    "📈 DASHBOARD ANALISIS",
+    "⚙️ KELOLA KEYWORD"
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -249,7 +286,7 @@ with tab1:
                 "Target Kategori:",
                 ["✨ SEMUA KATEGORI (BATCH SCAN)"] + DAFTAR_KATEGORI,
                 label_visibility="collapsed",
-                help="Pilih 1 kategori untuk discan cepat, atau pilih BATCH SCAN untuk memproses 47 kategori sekaligus secara otomatis."
+                help="Pilih 1 kategori untuk discan cepat, atau pilih BATCH SCAN untuk memproses semua kategori sekaligus."
             )
         with col_btn:
             btn_scan = st.button("▶ SCAN", type="primary", use_container_width=True, help="Mulai pencarian dan filter AI.")
@@ -273,33 +310,67 @@ with tab1:
                         hasil_batch = batch_scan_semua_kategori(
                             DAFTAR_KATEGORI, mulai_str, selesai_str,
                             min_skor=min_skor, paksa_proses_ulang=paksa_ulang,
-                            callback_progress=cb_progress,
-                            api_keys=KEYS
+                            callback_progress=cb_progress
                         )
                     prog.empty(); status.empty()
                     r = hasil_batch["ringkasan"]
-                    st.success(f"✅ Batch Scan Selesai! Berita ditemukan di **{r['sukses']} kategori** ({r['persen_sukses']}%). Silakan cek tabel antrean di bawah.")
+                    st.success(
+                        f"✅ Batch Scan Selesai! Berita ditemukan di **{r['sukses']} kategori** "
+                        f"({r['persen_sukses']}%). Silakan cek tabel antrean di bawah."
+                    )
                     time.sleep(2); st.rerun()
 
                 else:
-                    with st.spinner(f"📡 Radar memindai: **{pilihan_kategori}**... Membutuhkan waktu sekitar 1-2 menit..."):
+                    # ─── FIX: log_container dan cb_log di DALAM st.status() ────
+                    hasil = {}  # Inisialisasi agar accessible setelah with block
+                    with st.status(
+                        f"📡 Radar memindai: **{pilihan_kategori}**...", expanded=True
+                    ) as status_box:
+                        log_container = st.empty()  # Ada di dalam status box
+                        log_lines = []
+
+                        def cb_log(pesan: str):
+                            log_lines.append(pesan)
+                            log_container.markdown(
+                                "\n".join([f"`{l}`" for l in log_lines[-12:]])
+                            )
+
                         hasil = scan_kategori(
                             pilihan_kategori, mulai_str, selesai_str,
                             min_skor=min_skor,
                             paksa_proses_ulang=paksa_ulang,
                             scan_semua_level=scan_semua,
                             aktifkan_fallback=True,
-                            api_keys=KEYS
+                            callback_log=cb_log,
                         )
+
+                        # ─── FIX: update status_box di dalam with block ────
+                        if hasil["status"] == "sukses":
+                            status_box.update(
+                                label=f"✅ Ditemukan {hasil['jumlah_valid']} artikel valid!",
+                                state="complete"
+                            )
+                        else:
+                            status_box.update(
+                                label="❌ Tidak ada berita ditemukan.",
+                                state="error"
+                            )
+
+                    # Tampilkan pesan sukses/error di luar status box
                     if hasil["status"] == "sukses":
-                        st.success(f"✅ Ditemukan **{hasil['jumlah_valid']} artikel** valid! Mengarahkan ke antrean...")
-                        st.session_state.kategori_terpilih_antrean = pilihan_kategori 
+                        st.success(
+                            f"✅ Ditemukan **{hasil['jumlah_valid']} artikel** valid! "
+                            f"Mengarahkan ke antrean..."
+                        )
+                        st.session_state.kategori_terpilih_antrean = pilihan_kategori
                     else:
                         st.error(hasil.get("pesan_utama", "Tidak ada berita ditemukan."))
                         with st.expander("💡 Saran Keyword Manual dari AI"):
-                            for kw in hasil.get("saran_keyword", []): st.markdown(f"- `{kw}`")
+                            for kw in hasil.get("saran_keyword", []):
+                                st.markdown(f"- `{kw}`")
                             st.markdown("**Coba cari manual di sumber berikut:**")
-                            for s in hasil.get("saran_sumber", []): st.markdown(f"- [{s}](https://{s})")
+                            for s in hasil.get("saran_sumber", []):
+                                st.markdown(f"- [{s}](https://{s})")
                     time.sleep(1.5); st.rerun()
 
     st.markdown("---")
@@ -316,10 +387,15 @@ with tab1:
         kosong = df[df["jumlah_artikel_valid"] == 0]
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📋 Total Dipindai",  len(df), help="Jumlah total kategori PDRB yang sudah pernah di-scan oleh Radar pada triwulan ini.")
-        c2.metric("🟢 Ada Berita",       len(ada), help="Kategori yang sudah memiliki minimal 1 artikel berita di database.")
-        c3.metric("🔴 Kosong/Buntu",     len(kosong), help="Kategori yang belum ditemukan beritanya sama sekali (AI menyerah).")
-        c4.metric("📈 Coverage",         f"{round(len(ada)/len(df)*100)}%" if len(df) else "0%", help="Persentase kelengkapan fenomena BPS Anda untuk triwulan ini.")
+        c1.metric("📋 Total Dipindai",  len(df),
+                  help="Jumlah total kategori PDRB yang sudah pernah di-scan pada triwulan ini.")
+        c2.metric("🟢 Ada Berita",       len(ada),
+                  help="Kategori yang sudah memiliki minimal 1 artikel di database.")
+        c3.metric("🔴 Kosong/Buntu",     len(kosong),
+                  help="Kategori yang belum ditemukan beritanya sama sekali.")
+        c4.metric("📈 Coverage",
+                  f"{round(len(ada)/len(df)*100)}%" if len(df) else "0%",
+                  help="Persentase kelengkapan fenomena BPS untuk triwulan ini.")
 
         col_ada, col_buntu = st.columns(2)
         with col_ada:
@@ -327,7 +403,11 @@ with tab1:
             if not ada.empty:
                 st.dataframe(
                     ada[["kategori_pdrb", "jumlah_artikel_valid", "terakhir_scan"]]
-                    .rename(columns={"kategori_pdrb": "Kategori", "jumlah_artikel_valid": "Artikel", "terakhir_scan": "Terakhir Scan"}),
+                    .rename(columns={
+                        "kategori_pdrb": "Kategori",
+                        "jumlah_artikel_valid": "Artikel",
+                        "terakhir_scan": "Terakhir Scan"
+                    }),
                     use_container_width=True, hide_index=True
                 )
         with col_buntu:
@@ -335,14 +415,20 @@ with tab1:
             if not kosong.empty:
                 st.dataframe(
                     kosong[["kategori_pdrb", "terakhir_scan"]]
-                    .rename(columns={"kategori_pdrb": "Kategori", "terakhir_scan": "Terakhir Scan"}),
+                    .rename(columns={
+                        "kategori_pdrb": "Kategori",
+                        "terakhir_scan": "Terakhir Scan"
+                    }),
                     use_container_width=True, hide_index=True
                 )
 
     st.markdown("---")
 
     # ── BAGIAN C: ANTREAN ARTIKEL ─────────────────────────────────────────────
-    st.markdown("#### 📥 Antrean Artikel Siap Ekstrak", help="Daftar berita hasil Radar yang lolos seleksi dan siap dibedah oleh AI Ekstraktor.")
+    st.markdown(
+        "#### 📥 Antrean Artikel Siap Ekstrak",
+        help="Daftar berita hasil Radar yang lolos seleksi dan siap dibedah oleh AI Ekstraktor."
+    )
 
     col_filter, col_input_manual = st.columns([2, 2])
     with col_filter:
@@ -355,14 +441,20 @@ with tab1:
             "Tampilkan antrean dari kategori:",
             opsi_antrean,
             index=index_terpilih,
-            help="Pilih kategori untuk melihat berita-berita hasil radar yang tertangkap."
+            help="Pilih kategori untuk melihat berita hasil radar yang tertangkap."
         )
         st.session_state.kategori_terpilih_antrean = kat_antrean
 
     with col_input_manual:
         st.markdown("**📎 Atau input URL manual (dari Google/Teman):**")
-        url_manual = st.text_input("URL Berita Manual:", placeholder="https://...", label_visibility="collapsed")
-        if st.button("📤 Kirim ke Ekstraktor Tab 2", use_container_width=True, help="Melewati antrean radar dan langsung mengirim link pilihan Anda ke meja Ekstraktor.") and url_manual:
+        url_manual = st.text_input(
+            "URL Berita Manual:", placeholder="https://...", label_visibility="collapsed"
+        )
+        if (
+            st.button("📤 Kirim ke Ekstraktor Tab 2", use_container_width=True,
+                      help="Melewati antrean radar dan langsung mengirim link ke meja Ekstraktor.")
+            and url_manual
+        ):
             st.session_state.target_url = url_manual
             st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
 
@@ -370,7 +462,7 @@ with tab1:
         artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan)
 
         if not artikel_db:
-            st.info("🎉 Kosong! Semua artikel di kategori ini sudah diekstrak oleh staf BPS atau belum ada scan baru.")
+            st.info("🎉 Kosong! Semua artikel di kategori ini sudah diekstrak atau belum ada scan baru.")
         else:
             st.markdown(f"**{len(artikel_db)} artikel menunggu ekstraksi:**")
             for art in artikel_db:
@@ -392,11 +484,14 @@ with tab1:
 
                     ca, cb, cc = st.columns([2, 2, 8])
                     with ca:
-                        if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}", type="primary", help="Membawa artikel ini ke Tab 2 untuk dibedah nilai statistiknya oleh AI."):
+                        if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",
+                                     type="primary",
+                                     help="Membawa artikel ini ke Tab 2 untuk dibedah AI."):
                             st.session_state.target_url = art["url_berita"]
                             st.toast("Berita dikirim! Silakan buka Tab Ekstraktor.", icon="🚀")
                     with cb:
-                        if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}", help="Buang artikel ini dari antrean karena judulnya clickbait atau tidak relevan."):
+                        if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}",
+                                     help="Buang artikel ini dari antrean."):
                             tandai_artikel_ditolak(art["url_berita"])
                             st.toast("Artikel dibuang ke tempat sampah.", icon="🗑️")
                             time.sleep(0.5); st.rerun()
@@ -409,9 +504,9 @@ with tab2:
     with st.expander("📖 Panduan Penggunaan Tab Ekstraktor", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Meja operasi AI untuk membedah artikel.
-        1. **Mulai Ekstrak:** Tekan tombol untuk memerintahkan AI membaca artikel dan memecahnya menjadi 12 poin penting (Ringkasan, Data Angka, Kutipan, dll).
-        2. **Human-in-the-Loop:** AI tidak selalu 100% sempurna. Anda **WAJIB** mengecek dan mengedit isi kotak jawaban jika ada kata yang salah sebelum difinalisasi.
-        3. **Finalisasi:** Menekan tombol 'Finalisasi' akan menghapus artikel tersebut dari antrean Radar (Tab 1), sehingga rekan kerja Anda tidak akan mengerjakan berita yang sama dobel-dobel.
+        1. **Mulai Ekstrak:** Tekan tombol untuk memerintahkan AI membaca artikel dan memecahnya menjadi 12 poin penting.
+        2. **Human-in-the-Loop:** AI tidak selalu 100% sempurna. Anda **WAJIB** mengecek dan mengedit isi kotak jawaban jika ada yang kurang tepat.
+        3. **Finalisasi:** Menekan tombol 'Finalisasi' akan menghapus artikel dari antrean Radar (Tab 1) dan menyimpannya ke database untuk download massal.
         """)
 
     st.markdown("## 📝 Meja Ekstraksi Fenomena BPS")
@@ -424,16 +519,20 @@ with tab2:
             placeholder="Tempel link berita di sini...",
             label_visibility="collapsed"
         )
-        btn_ekstrak = st.button("🤖 MULAI EKSTRAK", type="primary", use_container_width=True, help="AI akan mulai membaca artikel secara penuh.")
+        btn_ekstrak = st.button(
+            "🤖 MULAI EKSTRAK", type="primary",
+            use_container_width=True,
+            help="AI akan mulai membaca artikel secara penuh."
+        )
 
     if btn_ekstrak:
         if not url_input.strip():
             st.error("URL tidak boleh kosong!")
         elif not any(KEYS.values()):
-            st.error("Tidak ada API Key yang terisi! Tambahkan di file `.env` atau Hugging Face Secrets.")
+            st.error("Tidak ada API Key yang terisi! Tambahkan di file `.env`.")
         else:
             st.session_state.ekstraksi_url_aktif = url_input.strip()
-            st.session_state.hasil_ekstraksi     = None  
+            st.session_state.hasil_ekstraksi     = None
             st.session_state.json_final_siap     = None
 
             with st.status("⚙️ Menjalankan Mesin Ekstraksi Lapis 7...", expanded=True) as status_box:
@@ -445,8 +544,11 @@ with tab2:
                     st.error(f"Pesan: {hasil_scrape['pesan']}")
                     st.stop()
                 else:
-                    st.write(f"✅ Web terbaca via **{hasil_scrape['metode']}** ({len(hasil_scrape['teks'])} karakter).")
-                    
+                    st.write(
+                        f"✅ Web terbaca via **{hasil_scrape['metode']}** "
+                        f"({len(hasil_scrape['teks'])} karakter)."
+                    )
+
                     st.write("🧠 2/2. AI Menganalisis 12 Variabel BPS... (Tunggu 10-20 Detik)")
                     hasil_ai = ekstrak_fenomena_ai(KEYS, hasil_scrape)
 
@@ -464,41 +566,65 @@ with tab2:
     if st.session_state.hasil_ekstraksi is not None:
         data = st.session_state.hasil_ekstraksi
 
-        st.markdown(f"#### 2️⃣ Validasi & Edit Hasil AI")
-        st.info(f"🧠 AI yang bertugas: **{data.get('_model_digunakan', 'AI')}** — Ingat, AI bisa salah baca (Halusinasi). Silakan periksa dan ketik ulang jika ada yang kurang tepat.")
+        st.markdown("#### 2️⃣ Validasi & Edit Hasil AI")
+        st.info(
+            f"🧠 AI yang bertugas: **{data.get('_model_digunakan', 'AI')}** — "
+            f"Ingat, AI bisa salah baca (Halusinasi). Silakan periksa dan ketik ulang jika ada yang kurang tepat."
+        )
 
         with st.form("form_finalisasi"):
             col1, col2 = st.columns(2)
 
             with col1:
-                tema      = st.text_input("1. Tema Topik", value=_ke_str(data.get("tema_topik", "")))
-                judul_tgl = st.text_input("2. Judul & Tanggal Terbit", value=_ke_str(data.get("judul_dan_tanggal", "")))
-                sumber    = st.text_input("3. Sumber & Link Media", value=_ke_str(data.get("sumber_dan_link", "")))
-                lokasi    = st.text_input("7. Lokasi Spesifik", value=_ke_str(data.get("lokasi_spesifik", "")))
-                periode   = st.text_input("9. Periode Kejadian", value=_ke_str(data.get("periode_kejadian", "")))
+                tema       = st.text_input("1. Tema Topik",           value=_ke_str(data.get("tema_topik", "")))
+                judul_tgl  = st.text_input("2. Judul & Tanggal Terbit", value=_ke_str(data.get("judul_dan_tanggal", "")))
+                sumber     = st.text_input("3. Sumber & Link Media",   value=_ke_str(data.get("sumber_dan_link", "")))
+                lokasi     = st.text_input("7. Lokasi Spesifik",       value=_ke_str(data.get("lokasi_spesifik", "")))
+                periode    = st.text_input("9. Periode Kejadian",      value=_ke_str(data.get("periode_kejadian", "")))
                 kata_kunci = st.text_input("10. Kata Kunci / Hashtag", value=_ke_str(data.get("kata_kunci", "")))
 
             with col2:
-                angka       = st.text_area("5. Data Angka Kuantitatif", value=_ke_str(data.get("data_angka", "")), height=120)
-                intervensi  = st.text_area("8. Intervensi Pemerintah", value=_ke_str(data.get("intervensi_pemerintah", "")), height=120)
-                sentimen    = st.selectbox(
+                angka      = st.text_area("5. Data Angka Kuantitatif",
+                                          value=_ke_str(data.get("data_angka", "")), height=120)
+                intervensi = st.text_area("8. Intervensi Pemerintah",
+                                          value=_ke_str(data.get("intervensi_pemerintah", "")), height=120)
+                sentimen   = st.selectbox(
                     "11. Sentimen Dampak", ["Positif", "Negatif", "Netral"],
-                    index=["Positif", "Negatif", "Netral"].index(data.get("sentimen_dampak", "Netral")) if data.get("sentimen_dampak") in ["Positif", "Negatif", "Netral"] else 2
+                    index=(
+                        ["Positif", "Negatif", "Netral"].index(data.get("sentimen_dampak", "Netral"))
+                        if data.get("sentimen_dampak") in ["Positif", "Negatif", "Netral"] else 2
+                    )
                 )
                 perbandingan = st.selectbox(
-                    "12. Jenis Perbandingan", ["y-on-y", "q-to-q", "harga", "Tidak ada informasi"],
-                    index=["y-on-y", "q-to-q", "harga", "Tidak ada informasi"].index(data.get("kategori_perbandingan", "Tidak ada informasi")) if data.get("kategori_perbandingan") in ["y-on-y", "q-to-q", "harga", "Tidak ada informasi"] else 3
+                    "12. Jenis Perbandingan",
+                    ["y-on-y", "q-to-q", "harga", "Tidak ada informasi"],
+                    index=(
+                        ["y-on-y", "q-to-q", "harga", "Tidak ada informasi"].index(
+                            data.get("kategori_perbandingan", "Tidak ada informasi")
+                        )
+                        if data.get("kategori_perbandingan") in
+                           ["y-on-y", "q-to-q", "harga", "Tidak ada informasi"] else 3
+                    )
                 )
 
-            ringkasan = st.text_area("4. Ringkasan Fenomena (4-5 Kalimat)", value=_ke_str(data.get("ringkasan_fenomena", "")), height=160)
-            kutipan   = st.text_area("6. Kutipan Tokoh & Narasumber", value=_ke_str(data.get("kutipan_tokoh", "")), height=130)
+            ringkasan = st.text_area("4. Ringkasan Fenomena (4-5 Kalimat)",
+                                     value=_ke_str(data.get("ringkasan_fenomena", "")), height=160)
+            kutipan   = st.text_area("6. Kutipan Tokoh & Narasumber",
+                                     value=_ke_str(data.get("kutipan_tokoh", "")), height=130)
 
             st.markdown("---")
-            submit = st.form_submit_button("✅ FINALISASI & TANDAI SELESAI", type="primary", use_container_width=True, help="Menyimpan hasil ke database agar laporan bisa didownload.")
+            submit = st.form_submit_button(
+                "✅ FINALISASI & TANDAI SELESAI", type="primary",
+                use_container_width=True,
+                help="Menyimpan hasil ke database agar laporan bisa didownload."
+            )
 
             if submit:
+                # ─── FIX: ambil model_info dari data SEBELUM di-clear ────
+                model_info = data.get("_model_digunakan", "")
+
                 tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
-                
+
                 st.session_state.json_final_siap = {
                     "tema_topik"           : tema,
                     "judul_dan_tanggal"    : judul_tgl,
@@ -514,15 +640,36 @@ with tab2:
                     "kategori_perbandingan": perbandingan,
                     "_url_sumber"          : st.session_state.ekstraksi_url_aktif,
                     "_waktu_ekstraksi"     : datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "_model_digunakan"     : model_info,  # ← FIX: disimpan sebelum clear
                 }
                 st.session_state.target_url      = ""
-                st.session_state.hasil_ekstraksi = None
+                st.session_state.hasil_ekstraksi = None  # Baru clear setelah json_final terbentuk
+
+                simpan_hasil_ekstraksi(
+                    url=st.session_state.ekstraksi_url_aktif,
+                    json_final=st.session_state.json_final_siap
+                )
                 st.success("🎉 Berhasil difinalisasi! Cek ke bawah form ini untuk mendownload Excel/JSON.")
 
     # ── DOWNLOAD BUTTONS — DI LUAR FORM ──
     if st.session_state.json_final_siap:
         jf = st.session_state.json_final_siap
         st.markdown("#### 📤 Unduh Hasil Ekstraksi (Pilih Salah Satu)")
+
+        LABEL_MAP_DL = [
+            ("tema_topik",            "Tema Topik"),
+            ("judul_dan_tanggal",     "Judul & Tanggal"),
+            ("sumber_dan_link",       "Sumber & Link"),
+            ("ringkasan_fenomena",    "Ringkasan Fenomena"),
+            ("data_angka",            "Data Angka"),
+            ("kutipan_tokoh",         "Kutipan Tokoh"),
+            ("lokasi_spesifik",       "Lokasi Spesifik"),
+            ("intervensi_pemerintah", "Intervensi Pemerintah"),
+            ("periode_kejadian",      "Periode Kejadian"),
+            ("kata_kunci",            "Kata Kunci"),
+            ("sentimen_dampak",       "Sentimen Dampak"),
+            ("kategori_perbandingan", "Kategori Perbandingan"),
+        ]
 
         col_dl1, col_dl2, col_dl3 = st.columns(3)
         ts = datetime.now().strftime('%Y%m%d_%H%M')
@@ -533,27 +680,18 @@ with tab2:
                 data=_buat_excel_ekstraksi(jf),
                 file_name=f"sifeno_{ts}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary",
-                key="dl_xlsx"
+                use_container_width=True, type="primary", key="dl_xlsx"
             )
             st.caption("📊 Excel — Paling direkomendasikan untuk laporan BPS")
 
         with col_dl2:
-            LABEL_MAP_DL = [
-                ("tema_topik","Tema Topik"),("judul_dan_tanggal","Judul & Tanggal"),
-                ("sumber_dan_link","Sumber & Link"),("ringkasan_fenomena","Ringkasan Fenomena"),
-                ("data_angka","Data Angka"),("kutipan_tokoh","Kutipan Tokoh"),
-                ("lokasi_spesifik","Lokasi Spesifik"),("intervensi_pemerintah","Intervensi Pemerintah"),
-                ("periode_kejadian","Periode Kejadian"),("kata_kunci","Kata Kunci"),
-                ("sentimen_dampak","Sentimen Dampak"),("kategori_perbandingan","Kategori Perbandingan"),
-            ]
-            df_csv = pd.DataFrame([{"Variabel": lbl, "Nilai": jf.get(k,"")} for k, lbl in LABEL_MAP_DL])
+            df_csv  = pd.DataFrame([{"Variabel": lbl, "Nilai": jf.get(k, "")} for k, lbl in LABEL_MAP_DL])
             csv_buf = io.StringIO()
             df_csv.to_csv(csv_buf, index=False)
             st.download_button(
                 "⬇️ Download CSV",
-                data=csv_buf.getvalue(), file_name=f"sifeno_{ts}.csv", mime="text/csv",
-                use_container_width=True, key="dl_csv"
+                data=csv_buf.getvalue(), file_name=f"sifeno_{ts}.csv",
+                mime="text/csv", use_container_width=True, key="dl_csv"
             )
             st.caption("📄 CSV — Mudah digabungkan di database tabular")
 
@@ -568,7 +706,7 @@ with tab2:
 
         with st.expander("👁️ Preview Hasil Akhir Cetak", expanded=False):
             df_preview = pd.DataFrame([
-                {"No": i+1, "Variabel BPS": lbl, "Hasil Ekstraksi": jf.get(k,"")}
+                {"No": i+1, "Variabel BPS": lbl, "Hasil Ekstraksi": jf.get(k, "")}
                 for i, (k, lbl) in enumerate(LABEL_MAP_DL)
             ])
             st.dataframe(df_preview, use_container_width=True, hide_index=True,
@@ -592,25 +730,28 @@ with tab3:
 
     st.markdown("## 🗄️ Tabel Data History Lengkap")
 
-    from radar.database import get_connection
+    # ─── FIX: finally block untuk pastikan conn selalu ditutup ────
+    conn = None
     try:
         conn = get_connection()
         df_riwayat = pd.read_sql_query("""
             SELECT
-                judul_berita     AS "Judul Berita",
-                kategori_pdrb    AS "Kategori PDRB",
-                triwulan         AS "Triwulan",
-                skor_relevansi   AS "Skor AI",
-                status           AS "Status",
+                judul_berita      AS "Judul Berita",
+                kategori_pdrb     AS "Kategori PDRB",
+                triwulan          AS "Triwulan",
+                skor_relevansi    AS "Skor AI",
+                status            AS "Status",
                 tanggal_ditemukan AS "Ditemukan",
                 tanggal_diekstrak AS "Diekstrak",
-                url_berita       AS "URL"
+                url_berita        AS "URL"
             FROM riwayat_artikel
             ORDER BY tanggal_ditemukan DESC
         """, conn)
-        conn.close()
     except Exception:
         df_riwayat = pd.DataFrame()
+    finally:
+        if conn is not None:
+            conn.close()
 
     if df_riwayat.empty:
         st.info("Belum ada riwayat artikel di database SQLite. Jalankan radar terlebih dahulu.")
@@ -636,15 +777,15 @@ with tab3:
 
         df_tampil = df_riwayat.copy()
         if filter_status: df_tampil = df_tampil[df_tampil["Status"].isin(filter_status)]
-        if filter_tw: df_tampil = df_tampil[df_tampil["Triwulan"].isin(filter_tw)]
-        if filter_kat: df_tampil = df_tampil[df_tampil["Kategori PDRB"].isin(filter_kat)]
+        if filter_tw:     df_tampil = df_tampil[df_tampil["Triwulan"].isin(filter_tw)]
+        if filter_kat:    df_tampil = df_tampil[df_tampil["Kategori PDRB"].isin(filter_kat)]
 
         st.markdown(f"**Menampilkan {len(df_tampil)} dari {len(df_riwayat)} total entri di Database**")
         st.dataframe(df_tampil.drop(columns=["URL"]), use_container_width=True, hide_index=True)
 
         st.markdown("**📤 Export Tabel di Atas:**")
         col_e1, col_e2, col_e3 = st.columns(3)
-        
+
         with col_e1:
             excel_buf_riwayat = io.BytesIO()
             with pd.ExcelWriter(excel_buf_riwayat, engine='openpyxl') as writer:
@@ -656,96 +797,214 @@ with tab3:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True, type="primary"
             )
-            
         with col_e2:
             csv_exp = df_tampil.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇️ Download CSV", data=csv_exp,
-                               file_name=f"Rekap_Radar_{datetime.now().strftime('%Y%m%d')}.csv",
-                               mime="text/csv", use_container_width=True)
-                               
+            st.download_button(
+                "⬇️ Download CSV", data=csv_exp,
+                file_name=f"Rekap_Radar_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv", use_container_width=True
+            )
         with col_e3:
             json_exp = df_tampil.to_json(orient="records", force_ascii=False, indent=2)
-            st.download_button("⬇️ Download JSON", data=json_exp.encode("utf-8"),
-                               file_name=f"Rekap_Radar_{datetime.now().strftime('%Y%m%d')}.json",
-                               mime="application/json", use_container_width=True)
+            st.download_button(
+                "⬇️ Download JSON", data=json_exp.encode("utf-8"),
+                file_name=f"Rekap_Radar_{datetime.now().strftime('%Y%m%d')}.json",
+                mime="application/json", use_container_width=True
+            )
+
+    # ── DOWNLOAD MASSAL HASIL EKSTRAKSI ──────────────────────────────────────
+    st.markdown("---")
+    st.markdown("## 📦 Download Semua Hasil Ekstraksi (Massal)")
+    st.caption("Seluruh berita yang sudah pernah difinalisasi di Tab 2, dalam 1 tabel.")
+
+    conn = None
+    try:
+        conn = get_connection()
+        df_ekstraksi = pd.read_sql_query("""
+            SELECT
+                waktu_ekstraksi       AS "Waktu Ekstraksi",
+                tema_topik            AS "Tema/Topik",
+                judul_dan_tanggal     AS "Judul & Tanggal",
+                sumber_dan_link       AS "Sumber & Link",
+                ringkasan_fenomena    AS "Ringkasan Fenomena",
+                data_angka            AS "Data Angka",
+                kutipan_tokoh         AS "Kutipan Tokoh",
+                lokasi_spesifik       AS "Lokasi Spesifik",
+                intervensi_pemerintah AS "Intervensi Pemerintah",
+                periode_kejadian      AS "Periode Kejadian",
+                kata_kunci            AS "Kata Kunci",
+                sentimen_dampak       AS "Sentimen",
+                kategori_perbandingan AS "Jenis Perbandingan",
+                model_ai              AS "Model AI",
+                url_berita            AS "URL"
+            FROM hasil_ekstraksi
+            ORDER BY waktu_ekstraksi DESC
+        """, conn)
+    except Exception:
+        df_ekstraksi = pd.DataFrame()
+    finally:
+        if conn is not None:
+            conn.close()
+
+    if df_ekstraksi.empty:
+        st.info("Belum ada hasil ekstraksi yang disimpan. Finalisasi berita di Tab 2 terlebih dahulu.")
+    else:
+        st.markdown(f"**Total {len(df_ekstraksi)} hasil ekstraksi tersimpan.**")
+        st.dataframe(df_ekstraksi.drop(columns=["URL"]), use_container_width=True, hide_index=True)
+
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            excel_buf = io.BytesIO()
+            with pd.ExcelWriter(excel_buf, engine='openpyxl') as writer:
+                df_ekstraksi.to_excel(writer, index=False, sheet_name='Semua Ekstraksi')
+            st.download_button(
+                "⬇️ Download Semua — Excel (.xlsx)",
+                data=excel_buf.getvalue(),
+                # ─── FIX: typo "SemauaEkstraksi" → "SemuaEkstraksi" ────
+                file_name=f"SemuaEkstraksi_SIPENA_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, type="primary"
+            )
+        with col_d2:
+            csv_all = df_ekstraksi.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Download Semua — CSV",
+                data=csv_all,
+                file_name=f"SemuaEkstraksi_SIPENA_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv", use_container_width=True
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4: DASHBOARD ANALISIS (BARU)
+# TAB 4: DASHBOARD ANALISIS
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab4:
     st.markdown("## 📈 Dashboard Analisis Fenomena")
     st.caption("Visualisasi interaktif untuk memantau tren berita ekonomi dan performa mesin SI-PENA.")
-    
+
+    # ─── FIX: finally block untuk pastikan conn selalu ditutup ────
+    conn = None
     try:
-        from radar.database import get_connection
         conn = get_connection()
         df_dash = pd.read_sql_query("SELECT * FROM riwayat_artikel", conn)
-        conn.close()
     except Exception:
         df_dash = pd.DataFrame()
+    finally:
+        if conn is not None:
+            conn.close()
 
     if df_dash.empty:
         st.info("ℹ️ Belum ada data untuk divisualisasikan. Silakan jalankan Radar terlebih dahulu.")
     else:
-        # Konversi format tanggal untuk sumbu X grafik
         df_dash['Tanggal Ditemukan'] = pd.to_datetime(df_dash['tanggal_ditemukan']).dt.date
-        
-        # --- Baris 1: Panel Metrik Eksekutif ---
+
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-        col_m1.metric("📰 Total Berita Tersimpan", len(df_dash), help="Total seluruh berita yang pernah ditangkap Radar.")
-        col_m2.metric("🏷️ Kategori Terdampak", df_dash['kategori_pdrb'].nunique(), help="Jumlah sektor ekonomi (PDRB) yang memiliki minimal 1 berita.")
-        col_m3.metric("🧠 Rata-rata Skor AI", round(df_dash['skor_relevansi'].mean(), 2), help="Skor rata-rata kualitas berita yang disaring AI (Skala 1-10).")
-        col_m4.metric("✅ Berita Diekstrak", len(df_dash[df_dash['status'] == 'diekstrak']), help="Jumlah berita yang sudah selesai diolah di Meja Ekstraktor (Tab 2).")
-        
+        col_m1.metric("📰 Total Berita Tersimpan",  len(df_dash),
+                      help="Total seluruh berita yang pernah ditangkap Radar.")
+        col_m2.metric("🏷️ Kategori Terdampak",      df_dash['kategori_pdrb'].nunique(),
+                      help="Jumlah sektor ekonomi (PDRB) yang memiliki minimal 1 berita.")
+        col_m3.metric("🧠 Rata-rata Skor AI",        round(df_dash['skor_relevansi'].mean(), 2),
+                      help="Skor rata-rata kualitas berita yang disaring AI (Skala 1-10).")
+        col_m4.metric("✅ Berita Diekstrak",          len(df_dash[df_dash['status'] == 'diekstrak']),
+                      help="Jumlah berita yang sudah selesai diolah di Meja Ekstraktor (Tab 2).")
+
         st.markdown("---")
-        
-        # --- Baris 2: Grafik Tren Harian & Donut Chart Status ---
+
         col_c1, col_c2 = st.columns([6, 4])
-        
         with col_c1:
             st.markdown("**📉 Tren Penemuan Berita Harian**")
             st.caption("Melihat lonjakan (spike) kemunculan berita pada hari-hari tertentu.")
             tren_harian = df_dash.groupby('Tanggal Ditemukan').size().reset_index(name='Jumlah Berita')
-            
-            # Line Chart menggunakan Altair
-            chart_tren = alt.Chart(tren_harian).mark_line(point=True, color='#4a6cf7', strokeWidth=3).encode(
+            chart_tren = alt.Chart(tren_harian).mark_line(
+                point=True, color='#4a6cf7', strokeWidth=3
+            ).encode(
                 x=alt.X('Tanggal Ditemukan:T', title='Tanggal'),
-                y=alt.Y('Jumlah Berita:Q', title='Jumlah Berita'),
+                y=alt.Y('Jumlah Berita:Q',     title='Jumlah Berita'),
                 tooltip=['Tanggal Ditemukan', 'Jumlah Berita']
             ).interactive().properties(height=300)
-            
             st.altair_chart(chart_tren, use_container_width=True)
-        
+
         with col_c2:
             st.markdown("**📊 Status Antrean Berita**")
             st.caption("Proporsi berita yang 'ngantre' vs yang sudah diselesaikan.")
             status_dist = df_dash['status'].value_counts().reset_index()
             status_dist.columns = ['Status', 'Jumlah']
-            
-            # Donut Chart menggunakan Altair
             chart_status = alt.Chart(status_dist).mark_arc(innerRadius=65).encode(
                 theta=alt.Theta(field="Jumlah", type="quantitative"),
-                color=alt.Color(field="Status", type="nominal", scale=alt.Scale(scheme='category10')),
+                color=alt.Color(field="Status", type="nominal",
+                                scale=alt.Scale(scheme='category10')),
                 tooltip=['Status', 'Jumlah']
             ).properties(height=300)
-            
             st.altair_chart(chart_status, use_container_width=True)
 
         st.markdown("---")
-        
-        # --- Baris 3: Horizontal Bar Chart Top Kategori ---
+
         st.markdown("**🏆 Top 10 Kategori PDRB Paling Banyak Diberitakan**")
         st.caption("Sektor ekonomi mana yang sedang menjadi sorotan / tren terpanas di media.")
-        
         top_kat = df_dash['kategori_pdrb'].value_counts().head(10).reset_index()
         top_kat.columns = ['Kategori', 'Jumlah Berita']
-        
-        # Horizontal Bar Chart menggunakan Altair
         chart_bar = alt.Chart(top_kat).mark_bar(color='#28a745', cornerRadiusEnd=4).encode(
             x=alt.X('Jumlah Berita:Q', title='Total Berita Ditemukan'),
             y=alt.Y('Kategori:N', sort='-x', title=''),
             tooltip=['Kategori', 'Jumlah Berita']
         ).properties(height=350)
-        
         st.altair_chart(chart_bar, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 5: KELOLA KEYWORD
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab5:
+    st.markdown("## ⚙️ Manajemen Keyword Pencarian")
+    st.caption("Tambah, ubah, atau hapus keyword untuk setiap kategori PDRB. Perubahan langsung aktif tanpa restart.")
+
+    kw_data = _load_keywords()
+
+    kat_edit = st.selectbox("Pilih Kategori untuk Diedit:", list(kw_data.keys()))
+
+    if kat_edit:
+        col_m, col_j, col_n = st.columns(3)
+        level_map = {
+            "🏙️ Level Kota Magelang": ("magelang", col_m),
+            "🌏 Level Jawa Tengah":   ("jateng",   col_j),
+            "🇮🇩 Level Nasional":     ("nasional", col_n),
+        }
+
+        new_keywords = {}
+        for label, (key, col) in level_map.items():
+            with col:
+                st.markdown(f"**{label}**")
+                existing = "\n".join(kw_data[kat_edit].get(key, []))
+
+                # ─── FIX: key unik per kategori + level ────────────────
+                # Tanpa ini, ganti dropdown kategori tidak me-refresh textarea
+                slug_kat = re.sub(r'[^a-z0-9]+', '_', kat_edit.lower()).strip('_')
+                edited = st.text_area(
+                    "Keyword (satu per baris):",
+                    value=existing,
+                    height=200,
+                    key=f"kw_{slug_kat}_{key}",
+                    help="Satu keyword per baris. Hapus baris untuk menghapus keyword."
+                )
+                new_keywords[key] = [
+                    k.strip() for k in edited.split("\n") if k.strip()
+                ]
+
+        if st.button("💾 Simpan Perubahan", type="primary", use_container_width=True):
+            kw_data[kat_edit] = new_keywords
+            _save_keywords(kw_data)
+            st.success(f"✅ Keyword untuk '{kat_edit}' berhasil disimpan!")
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown("**➕ Tambah Kategori Baru**")
+    nama_baru = st.text_input("Nama Kategori Baru:")
+    if st.button("Tambah Kategori") and nama_baru:
+        kw_data = _load_keywords()  # Reload fresh sebelum modifikasi
+        if nama_baru not in kw_data:
+            kw_data[nama_baru] = {"magelang": [], "jateng": [], "nasional": []}
+            _save_keywords(kw_data)
+            st.success(f"✅ Kategori '{nama_baru}' ditambahkan! Pilih dari dropdown di atas untuk mengisi keyword-nya.")
+            st.rerun()
+        else:
+            st.warning("Kategori sudah ada.")

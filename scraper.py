@@ -109,6 +109,36 @@ def _metode_google_cache(url: str) -> dict | None:
     except Exception:
         return None
 
+
+def bersihkan_teks_artikel(teks: str) -> str:
+    """
+    Preprocessing teks hasil scraping sebelum dikirim ke AI.
+    Menghapus noise umum dari halaman web.
+    """
+    # 1. Normalisasi line ending
+    teks = teks.replace('\r\n', '\n').replace('\r', '\n')
+    
+    # 2. Hapus baris yang sangat pendek (< 25 karakter) — biasanya noise navigasi
+    baris = teks.split('\n')
+    baris_bersih = [b for b in baris if len(b.strip()) >= 25]
+    teks = '\n'.join(baris_bersih)
+    
+    # 3. Hapus multiple whitespace horizontal
+    teks = re.sub(r'[ \t]{2,}', ' ', teks)
+    
+    # 4. Kompres multiple baris kosong jadi maks 2
+    teks = re.sub(r'\n{3,}', '\n\n', teks)
+    
+    # 5. Hapus karakter kontrol non-printable
+    teks = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', teks)
+    
+    return teks.strip()
+
+
+def hitung_kata(teks: str) -> int:
+    """Hitung kata di dalam teks."""
+    return len(teks.split())
+
 # ─── Fungsi Utama ─────────────────────────────────────────────────────────────
 def scrape_berita(url: str) -> dict:
     """
@@ -141,8 +171,10 @@ def scrape_berita(url: str) -> dict:
             print(f"   -> [Diblokir] {nama_metode}: Kena Cloudflare challenge.")
             continue
 
-        if len(teks) < 200:
-            print(f"   -> [Gagal] {nama_metode}: Teks terlalu pendek ({len(teks)} karakter).")
+        teks_bersih = bersihkan_teks_artikel(teks)
+
+        if hitung_kata(teks_bersih) < 80:  
+            print(f"   -> [Gagal] {nama_metode}: Teks terlalu sedikit kata ({hitung_kata(teks_bersih)} kata).")
             continue
 
         # Sukses!
@@ -153,7 +185,7 @@ def scrape_berita(url: str) -> dict:
             "url":     clean_url, # Simpan URL bersih di database BPS
             "judul":   judul or "Judul diekstrak AI",
             "tanggal": "Diekstrak otomatis oleh AI",
-            "teks":    teks
+            "teks":    teks_bersih
         }
 
     # Semua metode gagal
