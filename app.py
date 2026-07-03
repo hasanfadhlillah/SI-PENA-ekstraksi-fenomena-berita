@@ -1483,17 +1483,15 @@ with tab6:
                 Catatan Pengembangan
             </div>
             <div style="font-size: 0.88rem; color: #555; margin-top: 6px; line-height: 1.7;">
-                SI-PENA dikembangkan sebagai bagian dari program
-                <strong>PKL (Praktik Kerja Lapangan)</strong> mahasiswa
+                SI-PENA dikembangkan sebagai bagian dari program Magang mahasiswa Fakultas
                 Ilmu Komputer Universitas Brawijaya di BPS Kota Magelang.<br><br>
-                Platform ini bersifat <em>open-source internal</em> dan dapat
-                dikembangkan lebih lanjut oleh staf BPS atau mahasiswa PKL berikutnya.
+                Platform ini bersifat <em>open-source internal</em> dan dapat dikembangkan lebih lanjut.
             </div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("")
     st.caption(
-        "SI-PENA v1.0  •  Dibuat dengan ❤️ menggunakan Streamlit & Python  •  "
+        "SI-PENA v1.0  •  Made with ❤️  •  "
         f"BPS Kota Magelang {datetime.now().year}"
     )
