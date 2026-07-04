@@ -16,13 +16,13 @@ URUTAN_FALLBACK = [
         "level": 2, 
         "nama": "Kabupaten Magelang",   
         "key": "magelang", 
-        "replace": ("kota magelang", "kabupaten magelang") # Otomatis ubah keyword
+        "replace": ("kota magelang", "magelang")
     },
     {
         "level": 3, 
         "nama": "Eks-Karesidenan Kedu", 
         "key": "magelang", 
-        "replace": ("kota magelang", "karesidenan kedu") # Otomatis ubah keyword
+        "replace": ("kota magelang", "karesidenan kedu")
     },
     {
         "level": 4, 

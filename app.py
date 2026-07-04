@@ -1303,7 +1303,7 @@ with tab6:
             <div style="font-size: 0.85rem; color: #555; margin-bottom: 20px;">Kategori PDRB yang didukung</div>
             <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">5</div>
             <div style="font-size: 0.85rem; color: #555; margin-bottom: 20px;">Level fallback wilayah</div>
-            <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">7+</div>
+            <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">9</div>
             <div style="font-size: 0.85rem; color: #555; margin-bottom: 20px;">Model AI dengan auto-fallback</div>
             <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">12</div>
             <div style="font-size: 0.85rem; color: #555;">Variabel BPS yang diekstrak otomatis</div>
@@ -1339,7 +1339,7 @@ with tab6:
          "tanpa perlu menyentuh kode program. Perubahan tersimpan ke file JSON dan "
          "langsung aktif di sesi scan berikutnya."),
         ("🤖", "Multi-AI Auto-Fallback",
-         "Sistem load balancing dengan 7 model AI (Groq, Gemini, Mistral, Cerebras) "
+         "Sistem load balancing dengan 9 model AI (Groq, Gemini, Mistral, Cerebras) "
          "dan dukungan multiple API key per provider. Jika satu model limit/error, "
          "sistem otomatis beralih ke model cadangan berikutnya."),
     ]
@@ -1418,8 +1418,9 @@ with tab6:
     with col_t2:
         st.markdown("**🤖 Model AI**")
         for tech, warna in [
-            ("Groq — Llama 3.3 70B", "#f55036"), ("Gemini 2.5 Flash", "#4285f4"),
-            ("Mistral Small", "#ff7000"), ("Cerebras Llama 8B", "#7c3aed"),
+            ("Groq — GPT-OSS 120B", "#f55036"), ("Gemini 3.1 Flash-Lite", "#4285f4"),
+            ("Gemini 3.5 Flash", "#0f9d58"), ("Gemma 4 26B/31B", "#fbbc05"),
+            ("Cerebras (GPT-OSS/GLM/Gemma)", "#7c3aed"), ("Mistral Small", "#ff7000"),
         ]:
             st.markdown(
                 f'<span class="tech-chip" style="background:{warna}20; color:{warna}; border:1px solid {warna}40;">'

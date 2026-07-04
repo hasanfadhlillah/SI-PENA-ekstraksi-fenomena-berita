@@ -86,6 +86,10 @@ def _buat_prompt(data_artikel: dict, max_chars: int) -> str:
     return f"""
         Anda adalah Analis Data Ahli yang Handal dan Professional di Badan Pusat Statistik (BPS) Kota Magelang.
         Tugas Anda adalah menganalisis teks artikel berita dan mengekstrak fenomena yang relevan untuk data statistik DENGAN SUPER LENGKAP, SUPER DETAIL, DAN SUPER TEPAT DAN BENAR TANPA ADA YANG TERTINGGAL.
+
+        LANGKAH WAJIB SEBELUM MENJAWAB:
+        Baca ULANG seluruh teks artikel di bawah dari kalimat pertama sampai kalimat terakhir, satu per satu.
+        JANGAN hanya berdasar judul atau 1-2 paragraf pertama — banyak angka dan kutipan penting justru muncul di paragraf tengah/akhir.
         
         Data Artikel Sumber:
         URL: {url}
@@ -100,34 +104,40 @@ def _buat_prompt(data_artikel: dict, max_chars: int) -> str:
         2. "judul_dan_tanggal": Kombinasi judul asli berita dan tanggal publish.
         3. "sumber_dan_link": Nama media massa dan URL berita lengkap.
         4. "ringkasan_fenomena": rangkuman/ringkasan/penjelasan 4-5 Kalimat tentang penyebab kejadian, perubahan data angka, persentase, angka-angka penting (misal jumlah lokasi/daerah yang terdampak, jumlah yang dioptimalkan, dan sejenisnya), dan lain-lainya + beserta alasannya (pastikan dalam ringkasan sudah termasuk ada pernyataan narasumber yang diubah ke kalimat tidak langsung).
-        5. "data_angka": Ekstraksi nilai kuantitatif spesifik (misal harga, persentase %, ton, jumlah korban/hektar, dan lain-lainnya) yang disebutkan.
-        6. "kutipan_tokoh": Sebutkan semua pernyataan/statement/kata-kata resmi pejabat/tokoh/narasumber di dalam berita beserta nama dan jabatannya (biasanya ditandai dengan tanda kutip, ... ujarnya, ... ungkapnya, ... katanya, ... ungkap beliau, ungkap [nama narasumber/tokoh/pejabat], atau yang lain-lainnya).
+        5. "data_angka": WAJIB sebutkan SEMUA nilai kuantitatif yang muncul di teks (harga, persentase %, ton/kuintal/kg, hektar, jumlah unit/orang/korban, tanggal pencatatan data, dsb) dalam bentuk poin-poin singkat yang jelas konteksnya. Contoh format: "5,3 juta ton (stok CBP per Juni 2026)"; "1,02 juta ton (realisasi penyaluran CBP 2026)"; "3,23 juta ton (pengadaan setara beras dalam negeri 2026)". SISIR seluruh teks kalimat demi kalimat — jangan hanya ambil satu angka lalu berhenti. Field ini HANYA boleh diisi "Tidak ada informasi" jika setelah dibaca ulang benar-benar TIDAK ADA satupun angka di seluruh teks.
+        6. "kutipan_tokoh": WAJIB kutip ulang SETIAP kalimat kutipan langsung yang ada di teks — ditandai tanda kutip "...", atau didahului/diikuti kata kerja pelaporan seperti ujarnya, katanya, ucapnya, sambungnya, ungkapnya, jelasnya, tuturnya, dsb. Jika dalam satu teks ada lebih dari satu kutipan (umum terjadi), tuliskan SEMUANYA secara berurutan (pisahkan dengan " | "), bukan cuma salah satu. Sertakan nama dan jabatan narasumber jika disebutkan. Field ini HANYA boleh diisi "Tidak ada informasi" jika setelah dibaca ulang benar-benar TIDAK ADA kutipan langsung di teks.
         7. "lokasi_spesifik": Fokus area kejadian, misal nama kecamatan, pasar, atau desa, atau yang lainnya di Magelang.
-        8. "intervensi_pemerintah": Sebutkan semua tindakan/aksi/kebijakan yang diambil oleh pemerintah yang disebutkan untuk merespons fenomena tersebut (misal operasi pasar, bantuan, dan lain-lainnya).
-        9. "periode_kejadian": Kapan peristiwa tersebut terjadi, Rentang waktu riil peristiwa terjadi, terlepas dari tanggal berita rilis (misal tahun/bulan/minggu ke berapa).
+        8. "intervensi_pemerintah": Sebutkan SEMUA kebijakan, program, mekanisme, atau tindakan pemerintah/instansi yang disebutkan di teks untuk merespons ATAU mengelola fenomena tersebut — termasuk program yang SEDANG BERJALAN/rutin (misal Cadangan Beras Pemerintah/CBP, operasi pasar, pengadaan Bulog, subsidi, bantuan sosial, pemantauan harga terhadap HET, dsb), bukan hanya tindakan baru yang diumumkan secara eksplisit.
+        9. "periode_kejadian": Sebutkan rentang waktu/tanggal yang relevan dengan fenomena — termasuk tanggal pencatatan data yang disebut di teks (misal "per 23 Juni 2026"), proyeksi ke depan (misal "diperkirakan cukup sampai Mei 2027"), maupun perbandingan historis (misal "dibandingkan kondisi El Nino 2023") — bukan hanya jika ada frasa eksplisit "triwulan X".
         10. "kata_kunci": 3-5 hashtags untuk mempermudah pencarian (contoh: #Beras #GagalPanen).
         11. "sentimen_dampak": Pilih salah satu: Positif / Negatif / Netral.
         12. "kategori_perbandingan": Analisis narasi dan kutipan narasumber di dalam teks untuk menentukan satu perbandingan fenomena secara eksklusif, lalu pilih "y-on-y" (jika dibandingkan dengan tahun sebelumnya), "q-to-q" (kuartal/bulan sebelumnya), "harga" (fluktuasi harian/mingguan), atau "Tidak ada informasi" (jika tidak ada perbandingan waktu sama sekali).
         
         ATURAN:
-        a. Jika data benar-benar tidak ada di teks, isi dengan "Tidak ada informasi".
-        b. Jangan pernah membuat-buat data (No Hallucination).
-        c. Balas HANYA dengan JSON murni tanpa penjelasan, tanpa markdown, tanpa backtick.
+        a. SEBELUM mengisi field manapun dengan "Tidak ada informasi", cek ULANG dua kali ke teks aslinya — jangan terburu-buru menyimpulkan tidak ada, terutama untuk field 5 (data_angka), 6 (kutipan_tokoh), 8 (intervensi_pemerintah), dan 9 (periode_kejadian) yang sering terlewat padahal datanya ada.
+        b. Jika setelah dicek ulang data benar-benar tidak ada di teks, baru isi dengan "Tidak ada informasi".
+        c. Jangan pernah membuat-buat data (No Hallucination).
+        d. Balas HANYA dengan JSON murni tanpa penjelasan, tanpa markdown, tanpa backtick.
         """
 
 # ─── Caller: Groq ───────────────────────────────────────────────────────────────
 def _call_groq(api_key: str, model_id: str, prompt: str) -> str:
     client = Groq(api_key=api_key)
-    resp = client.chat.completions.create(
+    kwargs = dict(
         model=model_id,
         messages=[
             {"role": "system", "content": "Kamu analis data BPS. Balas HANYA JSON murni yang valid."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=2000,
+        max_tokens=3000,
         response_format={"type": "json_object"}
     )
+    # GPT-OSS default reasoning_effort Groq = "medium". Untuk tugas ekstraksi 12 variabel
+    # yang butuh ketelitian tinggi (jangan sampai ada angka/kutipan yang terlewat), naikkan ke "high".
+    if "gpt-oss" in model_id:
+        kwargs["reasoning_effort"] = "high"
+    resp = client.chat.completions.create(**kwargs)
     u = resp.usage
     print(f"   -> [Token] in:{u.prompt_tokens} out:{u.completion_tokens} total:{u.total_tokens}")
     return resp.choices[0].message.content
@@ -143,13 +153,15 @@ def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "leve
 
     config_kwargs = dict(
         temperature=0.1,
-        max_output_tokens=2000,
+        max_output_tokens=3000,
         response_mime_type="application/json",
     )
 
     if thinking == "level":
-        # thinking_level="minimal" = paling cepat & hemat token, setara thinking_budget=0 di model lama
-        config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_level="minimal")
+        # Tahap EKSTRAKSI (bukan screening) butuh ketelitian lebih tinggi supaya tidak
+        # ada angka/kutipan yang terlewat -> pakai "medium" (default rekomendasi Google),
+        # bukan "minimal" yang dipakai di tahap screening yang lebih ringan.
+        config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_level="medium")
     elif thinking == "budget":
         # Disisakan untuk kompatibilitas jika suatu saat ada model Gemini 2.x lagi di stack
         config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_budget=0)
@@ -171,16 +183,19 @@ def _call_cerebras(api_key: str, model_id: str, prompt: str) -> str:
         api_key=api_key,
         base_url="https://api.cerebras.ai/v1"
     )
-    resp = client.chat.completions.create(
+    kwargs = dict(
         model=model_id,
         messages=[
             {"role": "system", "content": "Kamu analis data BPS. Balas HANYA JSON murni yang valid."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=2000,
+        max_tokens=3000,
         response_format={"type": "json_object"}
     )
+    if "gpt-oss" in model_id:
+        kwargs["reasoning_effort"] = "high"
+    resp = client.chat.completions.create(**kwargs)
     teks = resp.choices[0].message.content
     if teks is None or not teks.strip():
         raise ValueError("Cerebras mengembalikan respons kosong")
@@ -199,7 +214,7 @@ def _call_mistral(api_key: str, model_id: str, prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=2000,
+        max_tokens=3000,
         response_format={"type": "json_object"}
     )
     teks = resp.choices[0].message.content
