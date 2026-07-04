@@ -80,7 +80,8 @@ def _jalankan_pipeline_satu_level(
 
     # Gerbang 2: Search
     hasil_search = cari_berita_multi_sumber(
-        keywords_siap, wilayah_key, tanggal_mulai, tanggal_selesai
+        keywords_siap, wilayah_key, tanggal_mulai, tanggal_selesai,
+        label_tampilan=wilayah_nama
     )
     if not hasil_search:
         _log(f"⚠️ 0 artikel ditemukan di {wilayah_nama}")

@@ -508,17 +508,19 @@ with tab1:
             )
 
         st.markdown("##### 🗺️ Aturan Geografi (Lolos / Tolak)")
+        st.caption("📌 Fokus tetap Kota Magelang — wilayah lain hanya dianggap relevan sebagai konteks/dampak ke Kota Magelang, bukan topik yang berdiri sendiri.")
         col_lolos, col_tolak = st.columns(2)
         with col_lolos:
             for teks in [
-                "✅ Menyebut 'Kota Magelang' atau 'Magelang' secara eksplisit",
-                "✅ Membahas 'Kabupaten Magelang' (1 wilayah, berdampak ke Kota)",
+                "✅ Menyebut 'Kota Magelang' secara eksplisit",
+                "✅ Berita Kabupaten Magelang/sekitarnya yang JUGA menyebut atau jelas berkaitan dengan Kota Magelang",
                 "✅ Membahas kondisi 'Jawa Tengah' / 'Jateng'",
                 "✅ Berita NASIONAL dari Kementerian / Badan / Pemerintah Pusat (Kementan, Bulog, BPS Pusat, dll.)",
             ]:
                 st.markdown(f'<div class="geo-lolos">{teks}</div>', unsafe_allow_html=True)
         with col_tolak:
             for teks in [
+                "❌ Berita Kabupaten Magelang murni (topik administratif/lokal semata) tanpa kaitan ke Kota Magelang",
                 "❌ Artikel dari PROVINSI LAIN (Jatim, Bali, Sumsel, dll.) tanpa menyebut Magelang/Jateng",
                 "❌ Artikel opini / lifestyle / hiburan tanpa data statistik apapun",
                 "❌ Artikel yang SAMA SEKALI tidak berkaitan dengan kategori PDRB yang dicari",
@@ -528,14 +530,14 @@ with tab1:
         st.markdown("##### 🧠 Sistem Skoring AI (Skala 1–10)")
         st.caption(f"Saat ini skor minimum lolos diatur ke **{min_skor}/10** (bisa diubah di sidebar).")
         skor_data = [
-            ("10", "🟢", "Ada data angka SPESIFIK + perbandingan waktu + menyebut Kota/Kab Magelang langsung", "green"),
+            ("10", "🟢", "Ada data angka SPESIFIK + perbandingan waktu + menyebut Kota Magelang langsung", "green"),
             ("9",  "🟢", "Ada data angka spesifik + perbandingan waktu + konteks Jawa Tengah", "green"),
             ("8",  "🟢", "Ada data angka spesifik + relevan kategori + wilayah valid", "green"),
             ("7",  "🟡", "Ada data angka + relevan kategori + wilayah valid, perbandingan waktu kurang eksplisit", "yellow"),
             ("6",  "🟡", "Ada data angka atau pernyataan resmi + relevan + wilayah valid, data kurang spesifik", "yellow"),
             ("5",  "🔴", "Relevan kategori + wilayah valid, tapi minim data konkret", "red"),
             ("3–4","🔴", "Ada kaitan dengan kategori tapi data sangat kurang atau wilayah kurang relevan", "red"),
-            ("1–2","🔴", "Artikel tidak relevan kategori, atau berasal dari provinsi lain yang tidak berdampak", "red"),
+            ("1–2","🔴", "Artikel tidak relevan kategori, atau berasal dari provinsi lain / Kabupaten Magelang murni yang tidak berdampak ke Kota", "red"),
         ]
         for skor, ikon, keterangan, warna in skor_data:
             css_class = f"skor-row-{warna}"
@@ -547,7 +549,7 @@ with tab1:
         st.markdown("##### ✅ Kriteria Data Fenomena (minimal salah satu)")
         c1, c2, c3 = st.columns(3)
         c1.info("**A. Data Angka Spesifik**\nHarga (Rp), persentase (%), berat (ton/kg), luas (ha), jumlah unit/orang")
-        c2.info("**B. Perbandingan Waktu**\n'naik X% dari bulan lalu', 'turun dibanding tahun lalu', y-on-y, q-to-q")
+        c2.info("**B. Perbandingan Waktu**\nEksplisit ('naik X% dari bulan lalu', y-on-y, q-to-q) maupun implisit/naratif (misal dibandingkan kejadian serupa tahun lalu, proyeksi ke depan)")
         c3.info("**C. Pernyataan Data Resmi**\nKutipan pejabat/instansi pemerintah tentang kondisi sektor")
 
     st.markdown("## 📡 Radar Pencari Berita Fenomena")

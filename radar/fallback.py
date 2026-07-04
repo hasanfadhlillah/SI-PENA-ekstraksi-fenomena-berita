@@ -62,8 +62,10 @@ def dapatkan_level_fallback_berikutnya(level_sekarang: int) -> dict | None:
 
 def siapkan_keyword_fallback(konfig_level: dict, keywords_per_wilayah: dict) -> list[str]:
     """
-    Fungsi BARU: Menyiapkan list keyword yang sudah disesuaikan dengan wilayah fallback.
-    Melakukan replace string "kota magelang" menjadi "kabupaten magelang" jika diinstruksikan.
+    Menyiapkan list keyword yang sudah disesuaikan dengan wilayah fallback.
+    Level 2: hapus qualifier "kota" -> jadi "magelang" polos (TETAP mencakup "Kota Magelang",
+    tidak melenceng ke topik "Kabupaten Magelang" yang beda entitas).
+    Level 3: replace ke "karesidenan kedu" (frasa generik, lihat catatan di URUTAN_FALLBACK).
     """
     base_key = konfig_level["key"]
     base_keywords = keywords_per_wilayah.get(base_key, [])

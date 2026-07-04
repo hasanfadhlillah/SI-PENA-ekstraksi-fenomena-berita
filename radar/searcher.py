@@ -370,14 +370,21 @@ def cari_berita_multi_sumber(
     wilayah: str,
     tanggal_mulai: str,
     tanggal_selesai: str,
-    callback_log=None 
+    callback_log=None,
+    label_tampilan: str = None
 ) -> list[dict]:
     """Fungsi utama Modul B — 100% Gratis Unlimited."""
     keywords = keywords_per_wilayah.get(wilayah, [])
     if not keywords:
         return []
 
-    tampilan = "KOTA MAGELANG" if wilayah == "magelang" else wilayah.upper()
+    # PERBAIKAN: sebelumnya label log selalu "KOTA MAGELANG" untuk Level 1, 2, DAN 3
+    # (karena ketiganya berbagi dict key "magelang" yang sama). Sekarang pakai nama
+    # level asli (dari fallback.py) kalau dikirim, supaya log tidak menyesatkan.
+    if label_tampilan:
+        tampilan = label_tampilan.upper()
+    else:
+        tampilan = "KOTA MAGELANG" if wilayah == "magelang" else wilayah.upper()
     pesan_header = f"📡 Mencari di wilayah: {tampilan} ({len(keywords)} keyword) \n📅 Rentang: {tanggal_mulai} s.d. {tanggal_selesai}"
     print(f"\n   {pesan_header}")
     if callback_log: callback_log(pesan_header)
