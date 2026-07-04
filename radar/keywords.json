@@ -19,15 +19,15 @@
       "panen padi jawa tengah",
       "produksi beras jateng",
       "harga gabah jawa tengah",
-      "panen raya",
+      "panen raya jawa tengah",
       "panen ubi kayu jawa tengah",
       "panen jagung jawa tengah",
       "palawija jawa tengah",
       "pelatihan petani jawa tengah",
-      "hama",
+      "hama tanaman pangan jawa tengah",
       "puso jawa tengah",
       "harga pupuk jawa tengah",
-      "el nino"
+      "el nino jawa tengah"
     ],
     "nasional": [
       "produksi padi nasional 2026",
@@ -35,7 +35,7 @@
       "panen jagung indonesia",
       "harga gabah nasional",
       "harga pupuk nasional",
-      "el nino"
+      "el nino indonesia"
     ]
   },
   "Tanaman Hortikultura Semusim": {
@@ -56,10 +56,7 @@
       "hortikultura jawa tengah",
       "petsai/sawi jawa tengah"
     ],
-    "nasional": [
-      "harga cabai nasional 2026",
-      "produksi bawang merah indonesia"
-    ]
+    "nasional": ["harga cabai nasional 2026", "produksi bawang merah indonesia"]
   },
   "Perkebunan Semusim": {
     "magelang": [
@@ -67,14 +64,8 @@
       "tembakau kota magelang",
       "perkebunan kota magelang"
     ],
-    "jateng": [
-      "produksi tebu jawa tengah",
-      "tembakau jateng"
-    ],
-    "nasional": [
-      "produksi gula nasional 2026",
-      "tembakau indonesia"
-    ]
+    "jateng": ["produksi tebu jawa tengah", "tembakau jateng"],
+    "nasional": ["produksi gula nasional 2026", "tembakau indonesia"]
   },
   "Tanaman Hortikultura Tahunan": {
     "magelang": [
@@ -93,10 +84,7 @@
       "cabai rawit jawa tengah",
       "harga cabai jawa tengah"
     ],
-    "nasional": [
-      "ekspor buah indonesia 2026",
-      "harga cabai nasional 2026"
-    ]
+    "nasional": ["ekspor buah indonesia 2026", "harga cabai nasional 2026"]
   },
   "Perkebunan Tahunan": {
     "magelang": [
@@ -109,10 +97,7 @@
       "kakao jateng",
       "perkebunan tahunan jawa tengah"
     ],
-    "nasional": [
-      "ekspor kopi indonesia 2026",
-      "produksi kakao nasional"
-    ]
+    "nasional": ["ekspor kopi indonesia 2026", "produksi kakao nasional"]
   },
   "Peternakan": {
     "magelang": [
@@ -137,7 +122,7 @@
     "nasional": [
       "harga daging sapi nasional 2026",
       "produksi telur indonesia",
-      "kebijakan pemerintah"
+      "kebijakan pemerintah peternakan indonesia"
     ]
   },
   "Jasa Pertanian dan Perburuan": {
@@ -146,29 +131,13 @@
       "penyuluh pertanian kota magelang",
       "jasa pemeliharaan tanaman kota magelang"
     ],
-    "jateng": [
-      "jasa pertanian jawa tengah",
-      "alsintan jateng"
-    ],
-    "nasional": [
-      "jasa pertanian indonesia 2026",
-      "jasa pertanian indonesia"
-    ]
+    "jateng": ["jasa pertanian jawa tengah", "alsintan jateng"],
+    "nasional": ["jasa pertanian indonesia 2026", "jasa pertanian indonesia"]
   },
   "Kehutanan dan Penebangan Kayu": {
-    "magelang": [
-      "kayu kota magelang",
-      "penebangan pohon kota magelang"
-    ],
-    "jateng": [
-      "kehutanan jawa tengah",
-      "hutan produksi jateng",
-      "harga kayu"
-    ],
-    "nasional": [
-      "produksi kayu indonesia 2026",
-      "deforestasi nasional"
-    ]
+    "magelang": ["kayu kota magelang", "penebangan pohon kota magelang"],
+    "jateng": ["kehutanan jawa tengah", "hutan produksi jateng", "harga kayu"],
+    "nasional": ["produksi kayu indonesia 2026", "deforestasi nasional"]
   },
   "Perikanan": {
     "magelang": [
@@ -183,12 +152,12 @@
       "perikanan jawa tengah",
       "ikan laut jateng",
       "nelayan jawa tengah",
-      "harga ikan budidaya"
+      "harga ikan budidaya jawa tengah"
     ],
     "nasional": [
       "produksi ikan indonesia 2026",
       "ekspor ikan nasional",
-      "harga pakan ikan"
+      "harga pakan ikan indonesia"
     ]
   },
   "Pertambangan Minyak dan Gas Bumi": {
@@ -212,23 +181,15 @@
       "harga batubara kota magelang",
       "pasokan batu bara kota magelang"
     ],
-    "jateng": [
-      "batubara jawa tengah",
-      "PLTU jateng"
-    ],
+    "jateng": ["batubara jawa tengah", "PLTU jateng"],
     "nasional": [
       "produksi batubara indonesia 2026",
       "ekspor batu bara nasional"
     ]
   },
   "Pertambangan Bijih Logam": {
-    "magelang": [
-      "logam kota magelang",
-      "tambang kota magelang"
-    ],
-    "jateng": [
-      "pertambangan logam jawa tengah"
-    ],
+    "magelang": ["logam kota magelang", "tambang kota magelang"],
+    "jateng": ["pertambangan logam jawa tengah"],
     "nasional": [
       "nikel indonesia 2026",
       "tembaga nasional",
@@ -246,9 +207,7 @@
       "pasir uruk jateng",
       "tambang ilegal jateng"
     ],
-    "nasional": [
-      "pertambangan galian c indonesia 2026"
-    ]
+    "nasional": ["pertambangan galian c indonesia 2026"]
   },
   "Industri Makanan dan Minuman": {
     "magelang": [
@@ -270,13 +229,13 @@
       "industri makanan jawa tengah",
       "pabrik minuman jateng",
       "harga bahan baku roti",
-      "ekspor bahan baku",
-      "impor bahan baku"
+      "ekspor bahan baku makanan jawa tengah",
+      "impor bahan baku makanan jawa tengah"
     ],
     "nasional": [
       "industri makanan minuman indonesia 2026",
-      "harga terigu",
-      "harga bahan baku"
+      "harga terigu indonesia",
+      "harga bahan baku pangan indonesia"
     ]
   },
   "Pengolahan Tembakau": {
@@ -295,10 +254,7 @@
       "pabrik rokok jateng",
       "buruh rokok jateng"
     ],
-    "nasional": [
-      "industri rokok indonesia 2026",
-      "cukai tembakau nasional"
-    ]
+    "nasional": ["industri rokok indonesia 2026", "cukai tembakau nasional"]
   },
   "Industri Tekstil dan Pakaian Jadi": {
     "magelang": [
@@ -320,7 +276,7 @@
     ],
     "nasional": [
       "ekspor tekstil indonesia 2026",
-      "PHK pabrik garmen",
+      "PHK pabrik garmen indonesia",
       "harga kapas nasional"
     ]
   },
@@ -338,9 +294,7 @@
       "pabrik sepatu jateng",
       "sepatu kulit jawa tengah"
     ],
-    "nasional": [
-      "ekspor alas kaki indonesia 2026"
-    ]
+    "nasional": ["ekspor alas kaki indonesia 2026"]
   },
   "Industri Kayu, Barang dari Kayu dan Gabus": {
     "magelang": [
@@ -352,10 +306,7 @@
       "kusen kayu kota magelang",
       "panel kayu kota magelang"
     ],
-    "jateng": [
-      "industri kayu jawa tengah",
-      "ekspor mebel jateng"
-    ],
+    "jateng": ["industri kayu jawa tengah", "ekspor mebel jateng"],
     "nasional": [
       "ekspor furnitur kayu indonesia 2026",
       "ekspor plywood indonesia 2026"
@@ -367,13 +318,8 @@
       "industri kertas kota magelang",
       "reproduksi video dan film kota magelang"
     ],
-    "jateng": [
-      "industri kertas jawa tengah",
-      "percetakan jateng"
-    ],
-    "nasional": [
-      "industri kertas indonesia 2026"
-    ]
+    "jateng": ["industri kertas jawa tengah", "percetakan jateng"],
+    "nasional": ["industri kertas indonesia 2026"]
   },
   "Industri Kimia, Farmasi dan Obat Tradisional": {
     "magelang": [
@@ -389,10 +335,7 @@
       "pabrik obat jateng",
       "jamu tradisional jateng"
     ],
-    "nasional": [
-      "industri farmasi indonesia 2026",
-      "ekspor jamu nasional"
-    ]
+    "nasional": ["industri farmasi indonesia 2026", "ekspor jamu nasional"]
   },
   "Industri Karet, Barang dari Karet dan Plastik": {
     "magelang": [
@@ -401,13 +344,8 @@
       "vulkanisir ban kota magelang",
       "kantong plastik kota magelang"
     ],
-    "jateng": [
-      "industri karet jawa tengah",
-      "pabrik plastik jateng"
-    ],
-    "nasional": [
-      "industri karet indonesia 2026"
-    ]
+    "jateng": ["industri karet jawa tengah", "pabrik plastik jateng"],
+    "nasional": ["industri karet indonesia 2026"]
   },
   "Industri Barang Galian bukan Logam": {
     "magelang": [
@@ -419,26 +357,13 @@
       "gypsum kota magelang",
       "nisan kota magelang"
     ],
-    "jateng": [
-      "industri genteng jawa tengah",
-      "keramik jateng"
-    ],
-    "nasional": [
-      "industri semen indonesia 2026"
-    ]
+    "jateng": ["industri genteng jawa tengah", "keramik jateng"],
+    "nasional": ["industri semen indonesia 2026"]
   },
   "Industri Logam Dasar": {
-    "magelang": [
-      "logam kota magelang",
-      "bengkel las kota magelang"
-    ],
-    "jateng": [
-      "industri logam jawa tengah",
-      "baja jateng"
-    ],
-    "nasional": [
-      "industri baja indonesia 2026"
-    ]
+    "magelang": ["logam kota magelang", "bengkel las kota magelang"],
+    "jateng": ["industri logam jawa tengah", "baja jateng"],
+    "nasional": ["industri baja indonesia 2026"]
   },
   "Industri Barang dari Logam, Komputer, Elektronik": {
     "magelang": [
@@ -447,9 +372,7 @@
       "bengkel las kota magelang",
       "aluminium kota magelang"
     ],
-    "jateng": [
-      "industri elektronik jawa tengah"
-    ],
+    "jateng": ["industri elektronik jawa tengah"],
     "nasional": [
       "industri elektronik indonesia 2026",
       "ekspor elektronik nasional"
@@ -461,10 +384,7 @@
       "bengkel mobil kota magelang",
       "dealer kendaraan kota magelang"
     ],
-    "jateng": [
-      "industri otomotif jawa tengah",
-      "karoseri jateng"
-    ],
+    "jateng": ["industri otomotif jawa tengah", "karoseri jateng"],
     "nasional": [
       "produksi kendaraan indonesia 2026",
       "ekspor otomotif nasional"
@@ -476,29 +396,19 @@
       "pabrik furnitur kota magelang",
       "furnitur kayu kota magelang"
     ],
-    "jateng": [
-      "industri furnitur jawa tengah",
-      "mebel jateng"
-    ],
-    "nasional": [
-      "ekspor furnitur indonesia 2026"
-    ]
+    "jateng": ["industri furnitur jawa tengah", "mebel jateng"],
+    "nasional": ["ekspor furnitur indonesia 2026"]
   },
   "Industri Pengolahan Lainnya, Jasa Reparasi, Pemasangan Mesin dan Peralatan": {
     "magelang": [
       "masker kota magelang",
       "produksi tas kota magelang",
       "asesoris kota magelang",
-      "harga bahan baku asesoris",
+      "harga bahan baku asesoris kota magelang",
       "harga asesoris kota magelang"
     ],
-    "jateng": [
-      "harga bahan baku asesoris jawa tengah"
-    ],
-    "nasional": [
-      "impor bahan baku nasional",
-      "ekspor bahan baku nasional"
-    ]
+    "jateng": ["harga bahan baku asesoris jawa tengah"],
+    "nasional": ["impor bahan baku nasional", "ekspor bahan baku nasional"]
   },
   "Ketenagalistrikan": {
     "magelang": [
@@ -508,15 +418,8 @@
       "pelanggan listrik kota magelang",
       "es kristal kota magelang"
     ],
-    "jateng": [
-      "listrik jawa tengah",
-      "PLN jateng",
-      "ketenagalistrikan jateng"
-    ],
-    "nasional": [
-      "produksi listrik indonesia 2026",
-      "bauran energi nasional"
-    ]
+    "jateng": ["listrik jawa tengah", "PLN jateng", "ketenagalistrikan jateng"],
+    "nasional": ["produksi listrik indonesia 2026", "bauran energi nasional"]
   },
   "Pengadaan Gas dan Produksi Es": {
     "magelang": [
@@ -527,14 +430,8 @@
       "bank sampah kota magelang",
       "limbah kota magelang"
     ],
-    "jateng": [
-      "jaringan gas jawa tengah",
-      "LPG jateng"
-    ],
-    "nasional": [
-      "harga LPG nasional 2026",
-      "subsidi gas elpiji"
-    ]
+    "jateng": ["jaringan gas jawa tengah", "LPG jateng"],
+    "nasional": ["harga LPG nasional 2026", "subsidi gas elpiji indonesia"]
   },
   "Pengadaan Air": {
     "magelang": [
@@ -543,13 +440,8 @@
       "pasokan air bersih kota magelang",
       "pemakaian air bersih kota magelang"
     ],
-    "jateng": [
-      "PDAM jawa tengah",
-      "air bersih jateng"
-    ],
-    "nasional": [
-      "akses air bersih indonesia 2026"
-    ]
+    "jateng": ["PDAM jawa tengah", "air bersih jateng"],
+    "nasional": ["akses air bersih indonesia 2026"]
   },
   "Konstruksi": {
     "magelang": [
@@ -572,10 +464,7 @@
       "proyek infrastruktur jateng",
       "realisasi apbd jateng"
     ],
-    "nasional": [
-      "realisasi APBN infrastruktur 2026",
-      "konstruksi nasional"
-    ]
+    "nasional": ["realisasi APBN infrastruktur 2026", "konstruksi nasional"]
   },
   "Perdagangan Mobil, Sepeda Motor dan Reparasinya": {
     "magelang": [
@@ -614,10 +503,7 @@
       "pasar tradisional jateng",
       "harga sembako jateng"
     ],
-    "nasional": [
-      "perdagangan ritel indonesia 2026",
-      "omzet pasar nasional"
-    ]
+    "nasional": ["perdagangan ritel indonesia 2026", "omzet pasar nasional"]
   },
   "Angkutan Rel": {
     "magelang": [
@@ -625,14 +511,8 @@
       "kereta api kota magelang",
       "reaktivasi jalur kereta kota magelang"
     ],
-    "jateng": [
-      "penumpang kereta daop 6",
-      "volume barang KAI jawa tengah"
-    ],
-    "nasional": [
-      "penumpang KAI 2026",
-      "volume angkutan kereta nasional"
-    ]
+    "jateng": ["penumpang kereta daop 6", "volume barang KAI jawa tengah"],
+    "nasional": ["penumpang KAI 2026", "volume angkutan kereta nasional"]
   },
   "Angkutan Darat": {
     "magelang": [
@@ -642,27 +522,16 @@
       "penumpang angkutan kota magelang",
       "angkutan gratis kota magelang"
     ],
-    "jateng": [
-      "angkutan darat jawa tengah",
-      "bus AKDP jateng"
-    ],
-    "nasional": [
-      "angkutan darat indonesia 2026"
-    ]
+    "jateng": ["angkutan darat jawa tengah", "bus AKDP jateng"],
+    "nasional": ["angkutan darat indonesia 2026"]
   },
   "Angkutan Laut": {
     "magelang": [
       "logistik laut kota magelang",
       "pengiriman barang laut kota magelang"
     ],
-    "jateng": [
-      "pelabuhan semarang",
-      "angkutan laut jawa tengah"
-    ],
-    "nasional": [
-      "angkutan laut indonesia 2026",
-      "pelabuhan tanjung priok"
-    ]
+    "jateng": ["pelabuhan semarang", "angkutan laut jawa tengah"],
+    "nasional": ["angkutan laut indonesia 2026", "pelabuhan tanjung priok"]
   },
   "Angkutan Udara": {
     "magelang": [
@@ -676,7 +545,7 @@
     ],
     "nasional": [
       "penumpang pesawat indonesia 2026",
-      "maskapai domestik"
+      "maskapai domestik indonesia"
     ]
   },
   "Pergudangan dan Jasa Penunjang Angkutan": {
@@ -687,14 +556,8 @@
       "pos kota magelang",
       "parkir kota magelang"
     ],
-    "jateng": [
-      "logistik jawa tengah",
-      "pergudangan jateng"
-    ],
-    "nasional": [
-      "logistik nasional 2026",
-      "biaya logistik indonesia"
-    ]
+    "jateng": ["logistik jawa tengah", "pergudangan jateng"],
+    "nasional": ["logistik nasional 2026", "biaya logistik indonesia"]
   },
   "Penyediaan Akomodasi": {
     "magelang": [
@@ -711,9 +574,7 @@
       "pariwisata akomodasi jateng",
       "Borobudur Marathon"
     ],
-    "nasional": [
-      "tingkat hunian hotel nasional 2026"
-    ]
+    "nasional": ["tingkat hunian hotel nasional 2026"]
   },
   "Penyediaan Makan Minum": {
     "magelang": [
@@ -723,7 +584,7 @@
       "kuliner kota magelang",
       "retreat di kota magelang",
       "wisuda jurit akmil kota magelang",
-      "pelaksanaan event olahraga",
+      "pelaksanaan event olahraga kota magelang",
       "pelaksanaan event lari kota magelang"
     ],
     "jateng": [
@@ -731,9 +592,7 @@
       "UMKM kuliner jateng",
       "Borobudur Marathon"
     ],
-    "nasional": [
-      "industri kuliner indonesia 2026"
-    ]
+    "nasional": ["industri kuliner indonesia 2026"]
   },
   "Informasi dan Komunikasi": {
     "magelang": [
@@ -742,10 +601,7 @@
       "warnet kota magelang",
       "wifi kota magelang"
     ],
-    "jateng": [
-      "internet jawa tengah",
-      "telekomunikasi jateng"
-    ],
+    "jateng": ["internet jawa tengah", "telekomunikasi jateng"],
     "nasional": [
       "industri digital indonesia 2026",
       "pengguna internet nasional"
@@ -763,10 +619,7 @@
       "NPL bank jateng",
       "kredit UMKM jateng"
     ],
-    "nasional": [
-      "kredit perbankan nasional 2026",
-      "suku bunga bank indonesia"
-    ]
+    "nasional": ["kredit perbankan nasional 2026", "suku bunga bank indonesia"]
   },
   "Asuransi dan Dana Pensiun": {
     "magelang": [
@@ -775,13 +628,8 @@
       "BPJS ketenagakerjaan kota magelang",
       "BPJS kesehatan kota magelang"
     ],
-    "jateng": [
-      "asuransi jawa tengah",
-      "BPJS jateng"
-    ],
-    "nasional": [
-      "industri asuransi indonesia 2026"
-    ]
+    "jateng": ["asuransi jawa tengah", "BPJS jateng"],
+    "nasional": ["industri asuransi indonesia 2026"]
   },
   "Jasa Keuangan Lainnya": {
     "magelang": [
@@ -791,14 +639,8 @@
       "money changer kota magelang",
       "saham kota magelang"
     ],
-    "jateng": [
-      "koperasi jawa tengah",
-      "fintech jateng"
-    ],
-    "nasional": [
-      "fintech indonesia 2026",
-      "pinjaman online nasional"
-    ]
+    "jateng": ["koperasi jawa tengah", "fintech jateng"],
+    "nasional": ["fintech indonesia 2026", "pinjaman online nasional"]
   },
   "Real Estate": {
     "magelang": [
@@ -809,14 +651,8 @@
       "sewa rumah kota magelang",
       "sewa tenant kota magelang"
     ],
-    "jateng": [
-      "properti jawa tengah",
-      "harga tanah jateng"
-    ],
-    "nasional": [
-      "properti indonesia 2026",
-      "harga rumah nasional"
-    ]
+    "jateng": ["properti jawa tengah", "harga tanah jateng"],
+    "nasional": ["properti indonesia 2026", "harga rumah nasional"]
   },
   "Jasa Perusahaan": {
     "magelang": [
@@ -836,9 +672,7 @@
       "agen outsourcing jateng",
       "Borobudur Marathon"
     ],
-    "nasional": [
-      "jasa bisnis indonesia 2026"
-    ]
+    "nasional": ["jasa bisnis indonesia 2026"]
   },
   "Administrasi Pemerintahan dan Jaminan Sosial": {
     "magelang": [
@@ -848,14 +682,8 @@
       "pajak daerah kota magelang",
       "asn kota magelang"
     ],
-    "jateng": [
-      "pemerintah jawa tengah",
-      "APBD jateng"
-    ],
-    "nasional": [
-      "realisasi APBN 2026",
-      "belanja pemerintah nasional"
-    ]
+    "jateng": ["pemerintah jawa tengah", "APBD jateng"],
+    "nasional": ["realisasi APBN 2026", "belanja pemerintah nasional"]
   },
   "Jasa Pendidikan": {
     "magelang": [
@@ -865,13 +693,8 @@
       "jumlah murid kota magelang",
       "pendidikan kota magelang"
     ],
-    "jateng": [
-      "pendidikan jawa tengah",
-      "APK sekolah jateng"
-    ],
-    "nasional": [
-      "anggaran pendidikan indonesia 2026"
-    ]
+    "jateng": ["pendidikan jawa tengah", "APK sekolah jateng"],
+    "nasional": ["anggaran pendidikan indonesia 2026"]
   },
   "Jasa Kesehatan dan Kegiatan Sosial": {
     "magelang": [
@@ -887,10 +710,7 @@
       "stunting jateng",
       "fasilitas kesehatan jateng"
     ],
-    "nasional": [
-      "kesehatan nasional 2026",
-      "JKN BPJS nasional"
-    ]
+    "nasional": ["kesehatan nasional 2026", "JKN BPJS nasional"]
   },
   "Jasa Lainnya": {
     "magelang": [
@@ -904,13 +724,8 @@
       "bioskop kota magelang",
       "penyelenggaraan olahraga kota magelang"
     ],
-    "jateng": [
-      "pariwisata jawa tengah",
-      "wisatawan jateng"
-    ],
-    "nasional": [
-      "pariwisata indonesia 2026"
-    ]
+    "jateng": ["pariwisata jawa tengah", "wisatawan jateng"],
+    "nasional": ["pariwisata indonesia 2026"]
   },
   "PRODUK DOMESTIK BRUTO": {
     "magelang": [

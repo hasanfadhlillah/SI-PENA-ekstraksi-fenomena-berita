@@ -99,13 +99,17 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                             {"role": "user",   "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=600,
+                        max_tokens=2000,
                         response_format={"type": "json_object"}
                     )
-                    # Naikkan ketelitian GPT-OSS (default Groq = "medium") supaya skor,
-                    # ada_data_angka, dan ada_perbandingan_waktu lebih akurat sesuai isi teks.
+                    # PERBAIKAN BUG: reasoning_effort="high" + max_tokens=600 menyebabkan
+                    # GPT-OSS SELALU gagal — token reasoning internal menghabiskan budget
+                    # sebelum sempat menulis JSON final, jadi output selalu terpotong
+                    # ("Unterminated string" / "Failed to validate JSON"). Turunkan ke "low"
+                    # (screening cuma butuh keputusan cepat, bukan reasoning panjang) dan
+                    # max_tokens dinaikkan jauh (2000) sebagai jaring pengaman.
                     if "gpt-oss" in model_id:
-                        groq_kwargs["reasoning_effort"] = "high"
+                        groq_kwargs["reasoning_effort"] = "low"
                     resp = client.chat.completions.create(**groq_kwargs)
                     teks = resp.choices[0].message.content
                     if teks is None or teks.strip() == "":
@@ -118,7 +122,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
 
                     gemini_config_kwargs = dict(
                         temperature=0.1,
-                        max_output_tokens=600,
+                        max_output_tokens=2000,
                         response_mime_type="application/json",
                     )
                     thinking = cfg.get("thinking", "level")
@@ -126,6 +130,8 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                         # PENTING: Gemini 3.x (3.1 Flash-Lite, 3.5 Flash) pakai thinking_level,
                         # BUKAN thinking_budget (beda dari Gemini 2.x lama). "medium" dipakai
                         # supaya skor & flag ada_data_angka/ada_perbandingan_waktu lebih akurat.
+                        # CATATAN: token thinking JUGA memotong budget max_output_tokens,
+                        # makanya budget di atas dinaikkan ke 2000 (bukan 600) untuk jaga-jaga.
                         gemini_config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_level="medium")
                     # thinking == "none" -> Gemma 4 tidak diberi parameter thinking sama sekali
 
@@ -151,11 +157,12 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                             {"role": "user",   "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=600,
+                        max_tokens=2000,
                         response_format={"type": "json_object"}
                     )
+                    # Sama seperti Groq: "high" bikin JSON terpotong. Pakai "low" + token besar.
                     if "gpt-oss" in model_id:
-                        cerebras_kwargs["reasoning_effort"] = "high"
+                        cerebras_kwargs["reasoning_effort"] = "low"
                     resp = client.chat.completions.create(**cerebras_kwargs)
                     teks = resp.choices[0].message.content
                     if teks is None or teks.strip() == "":

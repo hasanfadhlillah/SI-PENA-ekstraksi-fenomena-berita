@@ -130,13 +130,16 @@ def _call_groq(api_key: str, model_id: str, prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=3000,
+        max_tokens=6000,
         response_format={"type": "json_object"}
     )
-    # GPT-OSS default reasoning_effort Groq = "medium". Untuk tugas ekstraksi 12 variabel
-    # yang butuh ketelitian tinggi (jangan sampai ada angka/kutipan yang terlewat), naikkan ke "high".
+    # PERBAIKAN BUG: reasoning_effort="high" sebelumnya menyebabkan GPT-OSS menghabiskan
+    # budget token untuk "berpikir" (hidden reasoning tokens) SEBELUM menulis JSON final,
+    # sehingga JSON selalu terpotong (error "Unterminated string" / "Failed to validate JSON")
+    # di HAMPIR SETIAP panggilan. Turunkan ke "low" (irit token reasoning) + max_tokens
+    # dinaikkan jauh (6000) sebagai jaring pengaman supaya JSON final selalu selesai ditulis.
     if "gpt-oss" in model_id:
-        kwargs["reasoning_effort"] = "high"
+        kwargs["reasoning_effort"] = "low"
     resp = client.chat.completions.create(**kwargs)
     u = resp.usage
     print(f"   -> [Token] in:{u.prompt_tokens} out:{u.completion_tokens} total:{u.total_tokens}")
@@ -153,7 +156,7 @@ def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "leve
 
     config_kwargs = dict(
         temperature=0.1,
-        max_output_tokens=3000,
+        max_output_tokens=5000,
         response_mime_type="application/json",
     )
 
@@ -190,11 +193,13 @@ def _call_cerebras(api_key: str, model_id: str, prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=3000,
+        max_tokens=6000,
         response_format={"type": "json_object"}
     )
+    # Sama seperti di _call_groq: "high" menyebabkan JSON terpotong karena reasoning
+    # tokens menghabiskan budget sebelum jawaban final ditulis. Pakai "low" + token besar.
     if "gpt-oss" in model_id:
-        kwargs["reasoning_effort"] = "high"
+        kwargs["reasoning_effort"] = "low"
     resp = client.chat.completions.create(**kwargs)
     teks = resp.choices[0].message.content
     if teks is None or not teks.strip():
