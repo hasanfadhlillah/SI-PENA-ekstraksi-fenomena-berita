@@ -7,47 +7,71 @@ from google import genai as google_genai
 from google.genai import types as google_types
 
 # ─── KONFIGURASI MODEL STACK ────────────────────────────────────────────────────
+# Update: migrasi dari Llama 3.3 70B (deprecated, mati 16 Agu 2026) & Cerebras
+# Llama 3.1 8B (sudah tidak ada di free tier Cerebras) ke roster baru.
+# Urutan = urutan prioritas: Primary → Workhorse → Escalation-only → Volume tinggi → Fallback.
+#
+# Field "thinking" khusus provider "gemini" menentukan cara mematikan/meminimalkan
+# reasoning bawaan model agar hemat token & cepat:
+#   "level"  -> model keluarga Gemini 3.x (3.1 Flash-Lite, 3.5 Flash) pakai thinking_level
+#   "none"   -> Gemma 4 tidak diberi parameter thinking sama sekali (tidak didukung)
 MODEL_STACK = [
     {
-        "nama"      : "Groq — Llama 3.3 70B",
+        "nama"      : "Groq — GPT-OSS 120B",
         "provider"  : "groq",
-        "model_id"  : "llama-3.3-70b-versatile",
+        "model_id"  : "openai/gpt-oss-120b",
         "max_chars" : 8000,
     },
     {
-        "nama"      : "Google — Gemini 2.5 Flash",
+        "nama"      : "Google — Gemini 3.1 Flash-Lite",
         "provider"  : "gemini",
-        "model_id"  : "gemini-2.5-flash",          
+        "model_id"  : "gemini-3.1-flash-lite",
         "max_chars" : 10000,
+        "thinking"  : "level",
+    },
+    {
+        "nama"      : "Google — Gemini 3.5 Flash",      # Escalation-only: kuota cuma 20 RPD/akun, taruh di tengah stack agar hanya kepakai saat model sebelumnya limit
+        "provider"  : "gemini",
+        "model_id"  : "gemini-3.5-flash",
+        "max_chars" : 10000,
+        "thinking"  : "level",
+    },
+    {
+        "nama"      : "Google — Gemma 4 26B",
+        "provider"  : "gemini",
+        "model_id"  : "gemma-4-26b-a4b-it",
+        "max_chars" : 10000,
+        "thinking"  : "none",
+    },
+    {
+        "nama"      : "Google — Gemma 4 31B",
+        "provider"  : "gemini",
+        "model_id"  : "gemma-4-31b-it",
+        "max_chars" : 10000,
+        "thinking"  : "none",
+    },
+    {
+        "nama"      : "Cerebras — GPT-OSS 120B",
+        "provider"  : "cerebras",
+        "model_id"  : "gpt-oss-120b",
+        "max_chars" : 8000,
+    },
+    {
+        "nama"      : "Cerebras — Zai GLM 4.7",
+        "provider"  : "cerebras",
+        "model_id"  : "zai-glm-4.7",
+        "max_chars" : 8000,
+    },
+    {
+        "nama"      : "Cerebras — Gemma 4 31B",
+        "provider"  : "cerebras",
+        "model_id"  : "gemma-4-31b",
+        "max_chars" : 8000,
     },
     {
         "nama"      : "Mistral — Mistral Small",
         "provider"  : "mistral",
-        "model_id"  : "mistral-small-latest",       
-        "max_chars" : 8000,
-    },
-    {
-        "nama"      : "Groq — Gemma 2 9B",
-        "provider"  : "groq",
-        "model_id"  : "gemma2-9b-it",
-        "max_chars" : 4000,
-    },
-    {
-        "nama"      : "Google — Gemini 2.5 Flash-Lite",
-        "provider"  : "gemini",
-        "model_id"  : "gemini-2.5-flash-lite",     
-        "max_chars" : 10000,
-    },
-    {
-        "nama"      : "Cerebras — Llama 3.1 8B",
-        "provider"  : "cerebras",
-        "model_id"  : "llama3.1-8b",
-        "max_chars" : 8000,
-    },
-    {
-        "nama"      : "Groq — Llama 3.1 8B Instant",
-        "provider"  : "groq",
-        "model_id"  : "llama-3.1-8b-instant",
+        "model_id"  : "mistral-small-latest",
         "max_chars" : 8000,
     },
 ]
@@ -109,17 +133,32 @@ def _call_groq(api_key: str, model_id: str, prompt: str) -> str:
     return resp.choices[0].message.content
  
 # ─── Caller: Gemini ─────────────────────────────────────────────────────────────
-def _call_gemini(api_key: str, model_id: str, prompt: str) -> str:
+def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "level") -> str:
+    """
+    PENTING: Gemini 3.x (3.1 Flash-Lite, 3.5 Flash) pakai parameter thinking_level,
+    BUKAN thinking_budget seperti Gemini 2.x lama. Gemma 4 tidak mendukung parameter
+    thinking sama sekali, jadi harus di-skip total (thinking="none").
+    """
     client = google_genai.Client(api_key=api_key)
+
+    config_kwargs = dict(
+        temperature=0.1,
+        max_output_tokens=2000,
+        response_mime_type="application/json",
+    )
+
+    if thinking == "level":
+        # thinking_level="minimal" = paling cepat & hemat token, setara thinking_budget=0 di model lama
+        config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_level="minimal")
+    elif thinking == "budget":
+        # Disisakan untuk kompatibilitas jika suatu saat ada model Gemini 2.x lagi di stack
+        config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_budget=0)
+    # thinking == "none" -> sengaja tidak diisi apa-apa (Gemma 4)
+
     resp = client.models.generate_content(
         model=model_id,
         contents=prompt,
-        config=google_types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=2000,
-            response_mime_type="application/json",
-            thinking_config=google_types.ThinkingConfig(thinking_budget=0)
-        )
+        config=google_types.GenerateContentConfig(**config_kwargs)
     )
     teks = resp.text if resp.text is not None else ""
     if not teks.strip():
@@ -195,7 +234,7 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
                 if provider == "groq":
                     teks_json = _call_groq(api_key, cfg["model_id"], prompt)
                 elif provider == "gemini":
-                    teks_json = _call_gemini(api_key, cfg["model_id"], prompt)
+                    teks_json = _call_gemini(api_key, cfg["model_id"], prompt, cfg.get("thinking", "level"))
                 elif provider == "cerebras":
                     teks_json = _call_cerebras(api_key, cfg["model_id"], prompt)
                 elif provider == "mistral":

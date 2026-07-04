@@ -13,41 +13,58 @@ from google import genai as google_genai
 from google.genai import types as google_types
 
 # ─── KONFIGURASI MODEL STACK ──────────────────────────────────────────────────
+# Update: migrasi dari Llama 3.3 70B (deprecated) & Cerebras Llama 3.1 8B (sudah
+# tidak ada di free tier Cerebras) ke roster baru. Urutan = urutan prioritas.
+# Field "thinking": "level" utk Gemini 3.x, "none" utk Gemma 4 (tidak didukung).
 SCREENER_STACK = [
     {
-        "nama"      : "Groq — Llama 3.3 70B",
+        "nama"      : "Groq — GPT-OSS 120B",
         "provider"  : "groq",
-        "model_id"  : "llama-3.3-70b-versatile"
+        "model_id"  : "openai/gpt-oss-120b"
     },
     {
-        "nama"      : "Google — Gemini 2.5 Flash",
+        "nama"      : "Google — Gemini 3.1 Flash-Lite",
         "provider"  : "gemini",
-        "model_id"  : "gemini-2.5-flash"
+        "model_id"  : "gemini-3.1-flash-lite",
+        "thinking"  : "level"
+    },
+    {
+        "nama"      : "Google — Gemini 3.5 Flash",
+        "provider"  : "gemini",
+        "model_id"  : "gemini-3.5-flash",
+        "thinking"  : "level"
+    },
+    {
+        "nama"      : "Google — Gemma 4 26B",
+        "provider"  : "gemini",
+        "model_id"  : "gemma-4-26b-a4b-it",
+        "thinking"  : "none"
+    },
+    {
+        "nama"      : "Google — Gemma 4 31B",
+        "provider"  : "gemini",
+        "model_id"  : "gemma-4-31b-it",
+        "thinking"  : "none"
+    },
+    {
+        "nama"      : "Cerebras — GPT-OSS 120B",
+        "provider"  : "cerebras",
+        "model_id"  : "gpt-oss-120b"
+    },
+    {
+        "nama"      : "Cerebras — Zai GLM 4.7",
+        "provider"  : "cerebras",
+        "model_id"  : "zai-glm-4.7"
+    },
+    {
+        "nama"      : "Cerebras — Gemma 4 31B",
+        "provider"  : "cerebras",
+        "model_id"  : "gemma-4-31b"
     },
     {
         "nama"      : "Mistral — Mistral Small",
         "provider"  : "mistral",
-        "model_id"  : "mistral-small-latest"      
-    },
-    {
-        "nama"      : "Groq — Gemma 2 9B",
-        "provider"  : "groq",
-        "model_id"  : "gemma2-9b-it"
-    },
-    {
-        "nama"      : "Google — Gemini 2.5 Flash-Lite",
-        "provider"  : "gemini",
-        "model_id"  : "gemini-2.5-flash-lite"
-    },
-    {
-        "nama"      : "Cerebras — Llama 3.1 8B",
-        "provider"  : "cerebras",
-        "model_id"  : "llama3.1-8b"
-    },
-    {
-        "nama"      : "Groq — Llama 3.1 8B Instant",
-        "provider"  : "groq",
-        "model_id"  : "llama-3.1-8b-instant"
+        "model_id"  : "mistral-small-latest"
     }
 ]
 
