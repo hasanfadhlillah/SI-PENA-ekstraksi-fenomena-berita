@@ -930,7 +930,7 @@ with tab2:
                 )
 
                 # ── [BARU] CHANGE 2: Pop-up & banner notifikasi ───────────
-                st.toast("✅ Hasil ekstraksi berhasil disimpan ke database!", icon="✅")
+                st.toast("Hasil ekstraksi berhasil disimpan ke database!", icon="✅")
                 st.success(
                     "🎉 **Berhasil difinalisasi!** Hasil ekstraksi ini sudah tersimpan secara otomatis.\n\n"
                     "📦 Temukan di tab **🗄️ HISTORY BERITA** → bagian *'Download Semua Hasil Ekstraksi (Massal)'* "
@@ -1502,8 +1502,8 @@ with tab6:
             </div>
             <div style="font-size: 0.88rem; color: #555; margin-top: 6px;">
                 Badan Pusat Statistik — Kota Magelang<br>
-                Jl. Veteran No.2, Magelang Tengah,<br>
-                Kota Magelang, Jawa Tengah 56117
+                Jl. Jend. Gatot Soebroto No. 54-D, Jurangombo Selatan,<br>
+                Kec. Magelang Selatan, Kota Magelang, Jawa Tengah 56123
             </div>
             <div style="margin-top: 14px; font-size: 0.85rem;">
                 🌐 <a href="https://magelangkota.bps.go.id" target="_blank"
