@@ -446,8 +446,11 @@ with st.sidebar:
                             help="Filter seberapa ketat AI menyeleksi berita.")
     paksa_ulang = st.toggle("🔄 Proses Ulang Artikel Lama", value=False,
                             help="Jika diaktifkan, Radar akan men-scan ulang berita yang pernah ditolak/gagal.")
-    scan_semua  = st.toggle("🌐 Scan Semua Level Wilayah", value=True,
-                            help="Jika dinonaktifkan, AI berhenti jika sudah menemukan minimal 3 berita.")
+    scan_semua  = st.toggle("🌐 Scan Semua Level Wilayah (khusus Batch Scan)", value=False,
+                            help="Toggle ini HANYA berlaku untuk mode '✨ SEMUA KATEGORI (BATCH SCAN)'. "
+                                 "Nonaktif (default) = Batch Scan berhenti begitu tiap kategori menemukan "
+                                 "minimal 3 artikel. Catatan: scan 1 kategori (bukan Batch Scan) SELALU memindai semua "
+                                 "5 level wilayah secara penuh, tidak terpengaruh toggle ini.")
 
     st.markdown("---")
     st.markdown("### 🚦 Status Pasukan AI (Pool)")
@@ -596,7 +599,6 @@ with tab1:
                         f"({r['persen_sukses']}%). Silakan cek tabel antrean di bawah."
                     )
                     time.sleep(2); st.rerun()
-
                 else:
                     hasil = {}
                     with st.status(
@@ -604,22 +606,19 @@ with tab1:
                     ) as status_box:
                         log_container = st.empty()
                         log_lines     = []
-
                         def cb_log(pesan: str):
                             log_lines.append(pesan)
                             log_container.markdown(
                                 "\n".join([f"`{l}`" for l in log_lines[-12:]])
                             )
-
                         hasil = scan_kategori(
                             pilihan_kategori, mulai_str, selesai_str,
                             min_skor=min_skor,
                             paksa_proses_ulang=paksa_ulang,
-                            scan_semua_level=scan_semua,
+                            scan_semua_level=True,
                             aktifkan_fallback=True,
                             callback_log=cb_log,
                         )
-
                         if hasil["status"] == "sukses":
                             status_box.update(
                                 label=f"✅ Ditemukan {hasil['jumlah_valid']} artikel valid!",

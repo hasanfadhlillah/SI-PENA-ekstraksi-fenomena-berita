@@ -267,7 +267,6 @@ def scan_kategori(
 
 
 # ─── FUNGSI BATCH SCAN ─────────────────────────────────────────────────────────
-
 def batch_scan_semua_kategori(
     daftar_kategori: list[str],
     tanggal_mulai: str,
