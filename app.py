@@ -825,16 +825,17 @@ with tab2:
             st.session_state.ekstraksi_url_aktif = url_input.strip()
             st.session_state.hasil_ekstraksi     = None
             st.session_state.json_final_siap     = None
-
             with st.status("⚙️ Menjalankan Mesin Ekstraksi Lapis 7...", expanded=True) as status_box:
                 st.write("🕵️‍♂️ 1/2. Membaca situs web via Bypass Scraper...")
                 hasil_scrape = scrape_berita(url_input.strip())
-
                 if hasil_scrape["status"] == "error":
                     status_box.update(label="Scraping Gagal!", state="error")
                     st.error(f"Pesan: {hasil_scrape['pesan']}")
                     st.stop()
                 else:
+                    st.session_state.ekstraksi_url_aktif = hasil_scrape.get(
+                        "url", st.session_state.ekstraksi_url_aktif
+                    )
                     st.write(
                         f"✅ Web terbaca via **{hasil_scrape['metode']}** "
                         f"({len(hasil_scrape['teks'])} karakter)."

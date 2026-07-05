@@ -219,9 +219,7 @@ _KATA_FUNGSI_ID = {
 }
 # Kata fungsi umum Bahasa Inggris — kalau judul DIDOMINASI kata-kata ini,
 # kemungkinan besar berasal dari situs asing/berbahasa Inggris yang cuma
-# kebetulan cocok dengan keyword umum kita (mis. "kota" ~ Kota Rajasthan India,
-# "hama" ~ Hamas, "jawa" ~ Java/Jawa motorcycle, "padi" ~ PADI diving cert,
-# "ubi" ~ ticker saham UBI di Barrons).
+# kebetulan cocok dengan keyword umum kita.
 _KATA_FUNGSI_EN = {
     "the", "and", "for", "with", "this", "that", "will", "from", "are", "was",
     "were", "has", "have", "had", "not", "but", "you", "your", "best", "how",
@@ -302,7 +300,7 @@ def cari_duckduckgo_news(
                 try:
                     ddgs_kwargs = dict(
                         max_results=max_per_keyword,
-                        region="id-id",   # FIX #3: batasi hasil ke region Indonesia
+                        region="id-id",
                     )
                     if timelimit:
                         ddgs_kwargs["timelimit"] = timelimit
@@ -430,7 +428,7 @@ def cari_duckduckgo_web(
                     web_results = list(ddgs.text(
                         keyword_tahun,
                         max_results=max_per_keyword,
-                        region="id-id",   # FIX #3: batasi hasil ke region Indonesia
+                        region="id-id",
                     ))
                     for item in web_results:
                         url = _normalisasi_url(item.get("href", ""))

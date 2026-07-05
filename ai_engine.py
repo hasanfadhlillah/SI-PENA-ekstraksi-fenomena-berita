@@ -79,7 +79,7 @@ MODEL_STACK = [
 # ─── Buat Prompt ────────────────────────────────────────────────────────────────
 def _buat_prompt(data_artikel: dict, max_chars: int) -> str:
     teks = data_artikel.get('teks', '')[:max_chars]
-    url = data_artikel.get('url_asli', data_artikel.get('url', '-'))
+    url = data_artikel.get('url', data_artikel.get('url_asli', '-'))
     judul = data_artikel.get('judul', 'Judul Tidak Diketahui')
     tanggal = data_artikel.get('tanggal') or 'Tanggal Tidak Diketahui'
     

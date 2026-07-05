@@ -15,9 +15,6 @@ from google.genai import types as google_types
 from .config import DEFAULT_MIN_SKOR
 
 # ─── KONFIGURASI MODEL STACK ──────────────────────────────────────────────────
-# Update: migrasi dari Llama 3.3 70B (deprecated) & Cerebras Llama 3.1 8B (sudah
-# tidak ada di free tier Cerebras) ke roster baru. Urutan = urutan prioritas.
-# Field "thinking": "level" utk Gemini 3.x, "none" utk Gemma 4 (tidak didukung).
 SCREENER_STACK = [
     {
         "nama"      : "Groq — GPT-OSS 120B",
@@ -202,30 +199,10 @@ def screening_satu_artikel(
 ) -> dict:
     """
     Screening artikel untuk BPS Kota Magelang.
-
-    FIX #2: `min_skor` sekarang jadi parameter eksplisit yang disisipkan ke
-    prompt AI secara dinamis, menggantikan angka hardcode `6` yang lama.
-    Sebelumnya, field "layak_ekstrak" yang dihasilkan AI SELALU mensyaratkan
-    skor>=6 apa pun nilai slider "Skor Minimum Lolos" yang dipilih user di UI
-    — sehingga slider itu tidak berfungsi sama sekali untuk nilai di bawah 6.
-
-    ATURAN GEOGRAFI YANG BENAR:
-    ✅ LOLOS: Artikel menyebut Kota Magelang secara eksplisit
-    ✅ LOLOS: Artikel dari wilayah Kabupaten Magelang/sekitarnya YANG JUGA menyebut/berkaitan
-              langsung dengan Kota Magelang (fokus tetap Kota Magelang, bukan sekadar sama-sama
-              "Magelang")
-    ✅ LOLOS: Artikel Jawa Tengah (provinsi Kota Magelang berada)
-    ✅ LOLOS: Artikel NASIONAL dari Kementerian/Badan/Pemerintah Pusat
-              yang dampaknya ke SELURUH Indonesia (otomatis termasuk Kota Magelang)
-    ❌ TOLAK: Artikel murni Kabupaten Magelang (topik administratif/lokal Kabupaten semata)
-              yang TIDAK menyebut dan TIDAK jelas berkaitan dengan Kota Magelang
-    ❌ TOLAK: Artikel dari provinsi LAIN (Jatim, Bali, Sumsel, Kalsel, dll)
-              yang tidak menyebut Magelang/Jawa Tengah sama sekali
-    ❌ TOLAK: Artikel opini/berita tanpa data angka apapun
     """
     teks_pendek = artikel.get("teks", "")[:4000]
     judul       = artikel.get("judul", "")
-    url         = artikel.get("url_asli", artikel.get("url", ""))
+    url         = artikel.get("url", artikel.get("url_asli", ""))
     # Tentukan konteks level untuk AI
     wilayah_lower = wilayah.lower()
     if "kota magelang" in wilayah_lower:

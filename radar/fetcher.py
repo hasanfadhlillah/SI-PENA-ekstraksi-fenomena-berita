@@ -99,12 +99,6 @@ def fetch_parallel(
                 # ═══════════════════════════════════════════════════════════
                 # FIX #1d — LAPIS PERTAHANAN KEDUA: validasi ulang rentang tanggal
                 # ═══════════════════════════════════════════════════════════
-                # Hanya dijalankan kalau tanggal_final PASTI (bukan tebakan) —
-                # supaya artikel yang lolos filter awal Modul B (misal karena bug
-                # timelimit lama, atau berasal dari sumber tanpa tanggal seperti
-                # DDG Web) tapi ternyata setelah discrape terbukti di luar
-                # rentang triwulan, dibuang di sini — bukan diteruskan sampai ke
-                # AI screening & AI ekstraksi.
                 if tanggal_final_pasti and tanggal_mulai and tanggal_selesai:
                     lolos, _ = dalam_rentang_tanggal(tanggal_final, tanggal_mulai, tanggal_selesai)
                     if not lolos:
