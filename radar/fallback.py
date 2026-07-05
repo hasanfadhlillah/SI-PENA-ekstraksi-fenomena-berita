@@ -7,34 +7,40 @@ Mengatur logika fallback wilayah dan saran keyword manual jika semua level gagal
 # Urutan level fallback wilayah beserta instruksi manipulasi keyword
 URUTAN_FALLBACK = [
     {
-        "level": 1, 
-        "nama": "Kota Magelang",        
-        "key": "magelang", 
-        "replace": None
+        "level": 1,
+        "nama": "Kota Magelang",
+        "key": "magelang",
+        "replace": None,
+        "kabupaten_sekitar": None,
     },
     {
-        "level": 2, 
-        "nama": "Kabupaten Magelang",   
-        "key": "magelang", 
-        "replace": ("kota magelang", "magelang")
+        "level": 2,
+        "nama": "Kabupaten Magelang",
+        "key": "magelang",
+        "replace": ("kota magelang", "magelang"),
+        "kabupaten_sekitar": None,
     },
     {
-        "level": 3, 
-        "nama": "Eks-Karesidenan Kedu", 
-        "key": "magelang", 
-        "replace": ("kota magelang", "karesidenan kedu")
+        "level": 3,
+        # FIX #9: nama level diperjelas menyebut kabupaten aslinya
+        "nama": "Wilayah Sekitar Magelang / Eks-Karesidenan Kedu (Temanggung, Wonosobo, Purworejo, Kebumen)",
+        "key": "magelang",
+        "replace": None,
+        "kabupaten_sekitar": ["temanggung", "wonosobo", "purworejo", "kebumen"],
     },
     {
-        "level": 4, 
-        "nama": "Provinsi Jawa Tengah", 
-        "key": "jateng",   
-        "replace": None
+        "level": 4,
+        "nama": "Provinsi Jawa Tengah",
+        "key": "jateng",
+        "replace": None,
+        "kabupaten_sekitar": None,
     },
     {
-        "level": 5, 
-        "nama": "Nasional / Indonesia", 
-        "key": "nasional", 
-        "replace": None
+        "level": 5,
+        "nama": "Nasional / Indonesia",
+        "key": "nasional",
+        "replace": None,
+        "kabupaten_sekitar": None,
     },
 ]
 
@@ -63,12 +69,27 @@ def dapatkan_level_fallback_berikutnya(level_sekarang: int) -> dict | None:
 def siapkan_keyword_fallback(konfig_level: dict, keywords_per_wilayah: dict) -> list[str]:
     """
     Menyiapkan list keyword yang sudah disesuaikan dengan wilayah fallback.
-    Level 2: hapus qualifier "kota" -> jadi "magelang" polos (TETAP mencakup "Kota Magelang",
-    tidak melenceng ke topik "Kabupaten Magelang" yang beda entitas).
-    Level 3: replace ke "karesidenan kedu" (frasa generik, lihat catatan di URUTAN_FALLBACK).
+    Level 2: hapus qualifier "kota" -> jadi "magelang" polos (TETAP mencakup
+    "Kota Magelang", tidak melenceng ke topik "Kabupaten Magelang" yang beda
+    entitas).
+    Level 3 (FIX #9): rotasi keyword dasar ke 4 kabupaten tetangga sungguhan
+    (Temanggung, Wonosobo, Purworejo, Kebumen) secara CYCLIC — bukan cross-
+    product semua kombinasi — supaya total keyword yang dihasilkan tetap
+    sepadan dengan level lain (tidak membengkak 4x lipat dan memperlambat
+    eksekusi, lihat juga fix #3), sekaligus tetap mencakup keempat kabupaten
+    secara merata.
     """
     base_key = konfig_level["key"]
     base_keywords = keywords_per_wilayah.get(base_key, [])
+
+    kabupaten_sekitar = konfig_level.get("kabupaten_sekitar")
+    if kabupaten_sekitar:
+        keyword_baru = []
+        for i, kw in enumerate(base_keywords):
+            area = kabupaten_sekitar[i % len(kabupaten_sekitar)]
+            kw_modifikasi = kw.replace("kota magelang", area)
+            keyword_baru.append(kw_modifikasi)
+        return keyword_baru
 
     atur_replace = konfig_level.get("replace")
 
@@ -80,8 +101,6 @@ def siapkan_keyword_fallback(konfig_level: dict, keywords_per_wilayah: dict) -> 
     kata_lama, kata_baru = atur_replace
     keyword_baru = []
     for kw in base_keywords:
-        # PENTING: Lakukan replace dengan case-insensitive yang aman (menggunakan lower)
-        # Tapi karena di Modul A kita sudah set lower, langsung replace saja aman
         kw_modifikasi = kw.replace(kata_lama, kata_baru)
         keyword_baru.append(kw_modifikasi)
 
@@ -93,7 +112,6 @@ def buat_pesan_anti_buntu(nama_kategori: str, keywords_per_wilayah: dict) -> dic
     Membuat saran keyword manual untuk ditampilkan ke user ketika semua level gagal.
     """
     semua_keyword = []
-    # Kumpulkan beberapa keyword dari Kota Magelang sebagai contoh
     for kw in keywords_per_wilayah.get("magelang", []):
         semua_keyword.append(kw)
 

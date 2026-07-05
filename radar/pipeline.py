@@ -1,6 +1,6 @@
 # File: radar/pipeline.py
 """
-Pipeline Utama SI-FENO RADAR
+Pipeline Utama SI-PENA RADAR
 Mengintegrasikan semua modul: A (Query) → B (Search) → C (DB) → D (Scrape) → E (Screen) → F (Fallback)
 """
 
@@ -20,7 +20,6 @@ from .config         import DEFAULT_MIN_SKOR
 
 load_dotenv()
 
-# Membaca kunci API Jamak (Pooling) memprioritaskan yang pakai "S"
 GROQ_KEYS     = os.environ.get("GROQ_API_KEYS", os.environ.get("GROQ_API_KEY", ""))
 GEMINI_KEYS   = os.environ.get("GEMINI_API_KEYS", os.environ.get("GEMINI_API_KEY", ""))
 CEREBRAS_KEYS = os.environ.get("CEREBRAS_API_KEYS", os.environ.get("CEREBRAS_API_KEY", ""))
@@ -33,15 +32,12 @@ API_KEYS_DICT = {
     "mistral" : MISTRAL_KEYS,
 }
 
-# ─── Helper ────────────────────────────────────────────────────────────────────
 def _hitung_triwulan(tanggal_mulai: str) -> str:
     """Konversi tanggal ke label triwulan. Format: 'TW1-2026'"""
     dt = datetime.strptime(tanggal_mulai, "%Y-%m-%d")
     tw = (dt.month - 1) // 3 + 1
     return f"TW{tw}-{dt.year}"
 
-
-# ─── Fungsi Inti Pipeline (1 Kategori, 1 Level Wilayah) ───────────────────────
 
 def _jalankan_pipeline_satu_level(
     nama_kategori: str,
@@ -52,6 +48,7 @@ def _jalankan_pipeline_satu_level(
     triwulan: str,
     min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
+    target_minimal: int = 3,   # FIX #10: diteruskan ke screening_batch
     callback_log=None,
 ) -> list[dict]:
     """
@@ -61,7 +58,6 @@ def _jalankan_pipeline_satu_level(
     wilayah_nama = level_cfg["nama"]
     wilayah_key  = level_cfg["key"]
 
-    # ─── Helper log lokal ───
     def _log(pesan: str):
         print(pesan)
         if callback_log:
@@ -71,15 +67,12 @@ def _jalankan_pipeline_satu_level(
     print(f"  🌍 Level Wilayah: {wilayah_nama}")
     print(f"{'='*55}")
 
-    # Terapkan fungsi replace untuk perlindungan Kota/Kabupaten Magelang
     keyword_list = siapkan_keyword_fallback(level_cfg, keywords_dict)
 
     _log(f"🔍 Mencari di {wilayah_nama} ({len(keyword_list)} keyword)...")
 
-    # Bungkus ke dalam dictionary agar formatnya sesuai dengan input searcher.py
     keywords_siap = {wilayah_key: keyword_list}
 
-    # Gerbang 2: Search
     hasil_search = cari_berita_multi_sumber(
         keywords_siap, wilayah_key, tanggal_mulai, tanggal_selesai,
         label_tampilan=wilayah_nama
@@ -90,10 +83,6 @@ def _jalankan_pipeline_satu_level(
 
     _log(f"📰 {len(hasil_search)} artikel dari search engine")
 
-    # Gerbang 3: Filter URL sudah ada di DB
-    # FIX #1d: simpan dulu metadata (tanggal, judul, tanggal_pasti) dari hasil
-    # pencarian SEBELUM disederhanakan jadi daftar URL — supaya tidak hilang
-    # begitu saja saat masuk tahap scraping (bug lama).
     metadata_by_url = {item["url"]: item for item in hasil_search}
     list_url = [item["url"] for item in hasil_search]
     url_baru, warnings = filter_url_baru(list_url, paksa_proses_ulang)
@@ -109,10 +98,7 @@ def _jalankan_pipeline_satu_level(
 
     _log(f"🔗 {len(url_baru)} URL baru akan diproses (dari {len(list_url)} total)")
 
-    # Gerbang 4: Parallel Scraping
     _log(f"📥 Scraping {len(url_baru)} artikel secara paralel...")
-    # FIX #1d: teruskan metadata_by_url + rentang tanggal supaya fetcher.py bisa
-    # melakukan validasi ulang rentang tanggal (lapis pertahanan kedua)
     artikel_scraped = fetch_parallel(
         url_baru,
         metadata_by_url=metadata_by_url,
@@ -126,19 +112,19 @@ def _jalankan_pipeline_satu_level(
 
     _log(f"📄 {len(artikel_scraped)}/{len(url_baru)} artikel berhasil di-scrape")
 
-    # Gerbang 5: AI Screening
     _log(f"🤖 AI screening {len(artikel_scraped)} artikel...")
     lolos, tidak_lolos = screening_batch(
         api_keys=API_KEYS_DICT,
         list_artikel=artikel_scraped,
         nama_kategori=nama_kategori,
         wilayah=wilayah_nama,
-        min_skor=min_skor
+        min_skor=min_skor,
+        target_minimal=target_minimal,   # FIX #10
+        callback_log=callback_log,        # FIX #10
     )
 
     _log(f"✅ Screening selesai: {len(lolos)} lolos | {len(tidak_lolos)} tidak lolos")
 
-    # Simpan semua ke database (baik yang lolos maupun tidak)
     for artikel in lolos + tidak_lolos:
         url   = artikel.get("url", "")
         judul = artikel.get("judul", "")
@@ -157,8 +143,6 @@ def _jalankan_pipeline_satu_level(
 
     return lolos
 
-
-# ─── FUNGSI UTAMA: SCAN 1 KATEGORI ────────────────────────────────────────────
 
 def scan_kategori(
     nama_kategori: str,
@@ -182,7 +166,6 @@ def scan_kategori(
         print(f"  🔄 MODE: Paksa Proses Ulang Aktif!")
     print(f"{'#'*55}")
 
-    # ─── Helper log lokal ───
     def _log(pesan: str):
         print(pesan)
         if callback_log:
@@ -193,7 +176,6 @@ def scan_kategori(
 
     _log(f"🎯 Target: {nama_kategori} | {tanggal_mulai} s.d. {tanggal_selesai}")
 
-    # Gerbang 1: Query Expansion
     _log("🔑 Menerjemahkan kategori ke keyword pencarian...")
     keywords = dapatkan_keywords(nama_kategori, GROQ_KEYS)
     _log(
@@ -219,6 +201,7 @@ def scan_kategori(
             triwulan=triwulan,
             min_skor=min_skor,
             paksa_proses_ulang=paksa_proses_ulang,
+            target_minimal=target_minimal,   # FIX #10
             callback_log=callback_log,
         )
 
@@ -230,7 +213,6 @@ def scan_kategori(
                 f"({level_cfg['nama']}). Total: {len(semua_artikel_valid)}"
             )
 
-        # Logika lanjut/berhenti
         if not aktifkan_fallback:
             break
 
@@ -241,7 +223,6 @@ def scan_kategori(
                 _log(f"🎯 Target minimal {target_minimal} artikel tercapai. Berhenti di Level {level_sekarang}.")
                 break
 
-    # Update status kategori di DB
     update_status_kategori(nama_kategori, triwulan, len(semua_artikel_valid))
 
     if semua_artikel_valid:
@@ -266,7 +247,6 @@ def scan_kategori(
         }
 
 
-# ─── FUNGSI BATCH SCAN ─────────────────────────────────────────────────────────
 def batch_scan_semua_kategori(
     daftar_kategori: list[str],
     tanggal_mulai: str,

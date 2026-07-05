@@ -529,7 +529,7 @@ with tab1:
         level_data = [
             ("1", "🏙️", "Kota Magelang", "#003366", "#cce0ff"),
             ("2", "🏘️", "Kab. Magelang", "#0055a5", "#d6e8ff"),
-            ("3", "🗺️", "Eks-Kedu",      "#1a73e8", "#e3f0ff"),
+            ("3", "🗺️", "Eks-Kedu (Sekitar Magelang)", "#1a73e8", "#e3f0ff"),
             ("4", "🌏", "Jawa Tengah",   "#2e86de", "#eef4ff"),
             ("5", "🇮🇩", "Nasional",      "#54a0ff", "#f3f8ff"),
         ]

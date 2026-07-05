@@ -6,87 +6,19 @@ from groq import Groq
 from google import genai as google_genai
 from google.genai import types as google_types
 
-# ─── KONFIGURASI MODEL STACK ────────────────────────────────────────────────────
-# Update: migrasi dari Llama 3.3 70B (deprecated, mati 16 Agu 2026) & Cerebras
-# Llama 3.1 8B (sudah tidak ada di free tier Cerebras) ke roster baru.
-# Urutan = urutan prioritas: Primary → Workhorse → Escalation-only → Volume tinggi → Fallback.
-#
-# Field "thinking" khusus provider "gemini" menentukan cara mematikan/meminimalkan
-# reasoning bawaan model agar hemat token & cepat:
-#   "level"  -> model keluarga Gemini 3.x (3.1 Flash-Lite, 3.5 Flash) pakai thinking_level
-#   "none"   -> Gemma 4 tidak diberi parameter thinking sama sekali (tidak didukung)
-MODEL_STACK = [
-    {
-        "nama"      : "Groq — GPT-OSS 120B",
-        "provider"  : "groq",
-        "model_id"  : "openai/gpt-oss-120b",
-        "max_chars" : 8000,
-    },
-    {
-        "nama"      : "Google — Gemini 3.1 Flash-Lite",
-        "provider"  : "gemini",
-        "model_id"  : "gemini-3.1-flash-lite",
-        "max_chars" : 10000,
-        "thinking"  : "level",
-    },
-    {
-        "nama"      : "Google — Gemini 3.5 Flash",      # Escalation-only: kuota cuma 20 RPD/akun, taruh di tengah stack agar hanya kepakai saat model sebelumnya limit
-        "provider"  : "gemini",
-        "model_id"  : "gemini-3.5-flash",
-        "max_chars" : 10000,
-        "thinking"  : "level",
-    },
-    {
-        "nama"      : "Google — Gemma 4 26B",
-        "provider"  : "gemini",
-        "model_id"  : "gemma-4-26b-a4b-it",
-        "max_chars" : 10000,
-        "thinking"  : "none",
-    },
-    {
-        "nama"      : "Google — Gemma 4 31B",
-        "provider"  : "gemini",
-        "model_id"  : "gemma-4-31b-it",
-        "max_chars" : 10000,
-        "thinking"  : "none",
-    },
-    {
-        "nama"      : "Cerebras — GPT-OSS 120B",
-        "provider"  : "cerebras",
-        "model_id"  : "gpt-oss-120b",
-        "max_chars" : 8000,
-    },
-    {
-        "nama"      : "Cerebras — Zai GLM 4.7",
-        "provider"  : "cerebras",
-        "model_id"  : "zai-glm-4.7",
-        "max_chars" : 8000,
-    },
-    {
-        "nama"      : "Cerebras — Gemma 4 31B",
-        "provider"  : "cerebras",
-        "model_id"  : "gemma-4-31b",
-        "max_chars" : 8000,
-    },
-    {
-        "nama"      : "Mistral — Mistral Small",
-        "provider"  : "mistral",
-        "model_id"  : "mistral-small-latest",
-        "max_chars" : 8000,
-    },
-]
+from radar.model_stack import AI_MODEL_CATALOG as MODEL_STACK, MAX_TOKENS_EKSTRAKSI
 
 # ─── Buat Prompt ────────────────────────────────────────────────────────────────
 def _buat_prompt(data_artikel: dict, max_chars: int) -> str:
     teks = data_artikel.get('teks', '')[:max_chars]
+    # FIX #6: prioritaskan "url" (bersih dari scraper.py) di atas "url_asli"
     url = data_artikel.get('url', data_artikel.get('url_asli', '-'))
     judul = data_artikel.get('judul', 'Judul Tidak Diketahui')
-    tanggal = data_artikel.get('tanggal') or 'Tanggal Tidak Diketahui'
-    
+    tanggal = data_artikel.get('tanggal', 'Tanggal Tidak Diketahui')
+
     return f"""
         Anda adalah Analis Data Ahli yang Handal dan Professional di Badan Pusat Statistik (BPS) Kota Magelang.
         Tugas Anda adalah menganalisis teks artikel berita dan mengekstrak fenomena yang relevan untuk data statistik DENGAN SUPER LENGKAP, SUPER DETAIL, DAN SUPER TEPAT DAN BENAR TANPA ADA YANG TERTINGGAL.
-
         LANGKAH WAJIB SEBELUM MENJAWAB:
         Baca ULANG seluruh teks artikel di bawah dari kalimat pertama sampai kalimat terakhir, satu per satu.
         JANGAN hanya berdasar judul atau 1-2 paragraf pertama — banyak angka dan kutipan penting justru muncul di paragraf tengah/akhir.
@@ -119,9 +51,8 @@ def _buat_prompt(data_artikel: dict, max_chars: int) -> str:
         c. Jangan pernah membuat-buat data (No Hallucination).
         d. Balas HANYA dengan JSON murni tanpa penjelasan, tanpa markdown, tanpa backtick.
         """
-
 # ─── Caller: Groq ───────────────────────────────────────────────────────────────
-def _call_groq(api_key: str, model_id: str, prompt: str) -> str:
+def _call_groq(api_key: str, model_id: str, prompt: str, max_tokens: int) -> str:
     client = Groq(api_key=api_key)
     kwargs = dict(
         model=model_id,
@@ -130,14 +61,9 @@ def _call_groq(api_key: str, model_id: str, prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=6000,
+        max_tokens=max_tokens,   # FIX #12: dari MAX_TOKENS_EKSTRAKSI (1 sumber kebenaran)
         response_format={"type": "json_object"}
     )
-    # PERBAIKAN BUG: reasoning_effort="high" sebelumnya menyebabkan GPT-OSS menghabiskan
-    # budget token untuk "berpikir" (hidden reasoning tokens) SEBELUM menulis JSON final,
-    # sehingga JSON selalu terpotong (error "Unterminated string" / "Failed to validate JSON")
-    # di HAMPIR SETIAP panggilan. Turunkan ke "low" (irit token reasoning) + max_tokens
-    # dinaikkan jauh (6000) sebagai jaring pengaman supaya JSON final selalu selesai ditulis.
     if "gpt-oss" in model_id:
         kwargs["reasoning_effort"] = "low"
     resp = client.chat.completions.create(**kwargs)
@@ -146,30 +72,22 @@ def _call_groq(api_key: str, model_id: str, prompt: str) -> str:
     return resp.choices[0].message.content
  
 # ─── Caller: Gemini ─────────────────────────────────────────────────────────────
-def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "level") -> str:
+def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "level", max_output_tokens: int = 5000) -> str:
     """
     PENTING: Gemini 3.x (3.1 Flash-Lite, 3.5 Flash) pakai parameter thinking_level,
     BUKAN thinking_budget seperti Gemini 2.x lama. Gemma 4 tidak mendukung parameter
     thinking sama sekali, jadi harus di-skip total (thinking="none").
     """
     client = google_genai.Client(api_key=api_key)
-
     config_kwargs = dict(
         temperature=0.1,
-        max_output_tokens=5000,
+        max_output_tokens=max_output_tokens,   # FIX #12
         response_mime_type="application/json",
     )
-
     if thinking == "level":
-        # Tahap EKSTRAKSI (bukan screening) butuh ketelitian lebih tinggi supaya tidak
-        # ada angka/kutipan yang terlewat -> pakai "medium" (default rekomendasi Google),
-        # bukan "minimal" yang dipakai di tahap screening yang lebih ringan.
         config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_level="medium")
     elif thinking == "budget":
-        # Disisakan untuk kompatibilitas jika suatu saat ada model Gemini 2.x lagi di stack
         config_kwargs["thinking_config"] = google_types.ThinkingConfig(thinking_budget=0)
-    # thinking == "none" -> sengaja tidak diisi apa-apa (Gemma 4)
-
     resp = client.models.generate_content(
         model=model_id,
         contents=prompt,
@@ -181,7 +99,7 @@ def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "leve
     return teks
  
 # ─── Caller: Cerebras (OpenAI-compatible) ──────────────────────────────────────
-def _call_cerebras(api_key: str, model_id: str, prompt: str) -> str:
+def _call_cerebras(api_key: str, model_id: str, prompt: str, max_tokens: int) -> str:
     client = openai.OpenAI(
         api_key=api_key,
         base_url="https://api.cerebras.ai/v1"
@@ -193,11 +111,9 @@ def _call_cerebras(api_key: str, model_id: str, prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=6000,
+        max_tokens=max_tokens,   # FIX #12
         response_format={"type": "json_object"}
     )
-    # Sama seperti di _call_groq: "high" menyebabkan JSON terpotong karena reasoning
-    # tokens menghabiskan budget sebelum jawaban final ditulis. Pakai "low" + token besar.
     if "gpt-oss" in model_id:
         kwargs["reasoning_effort"] = "low"
     resp = client.chat.completions.create(**kwargs)
@@ -207,7 +123,7 @@ def _call_cerebras(api_key: str, model_id: str, prompt: str) -> str:
     return teks
  
 # ─── Caller: Mistral ─────────────────────────────────────────────────────────────
-def _call_mistral(api_key: str, model_id: str, prompt: str) -> str:
+def _call_mistral(api_key: str, model_id: str, prompt: str, max_tokens: int) -> str:
     client = openai.OpenAI(
         api_key=api_key,
         base_url="https://api.mistral.ai/v1"
@@ -219,7 +135,7 @@ def _call_mistral(api_key: str, model_id: str, prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=3000,
+        max_tokens=max_tokens,   # FIX #12: dari MAX_TOKENS_EKSTRAKSI (tetap 3000, tidak berubah)
         response_format={"type": "json_object"}
     )
     teks = resp.choices[0].message.content
@@ -235,7 +151,6 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
         provider = cfg["provider"]
         api_key_raw = keys.get(provider, "")
         
-        # Pecah gabungan API Key berdasarkan koma menjadi sebuah List (Pool)
         pool_keys = [k.strip() for k in api_key_raw.split(",") if k.strip()]
  
         if not pool_keys:
@@ -244,25 +159,23 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
  
         print(f"\n   -> [Mencoba] {cfg['nama']} (Ada {len(pool_keys)} Kunci Amunisi)...")
         prompt = _buat_prompt(data_artikel, cfg["max_chars"])
+        max_tokens = MAX_TOKENS_EKSTRAKSI.get(provider, 3000)   # FIX #12
         
-        # Acak urutan kunci agar beban terbagi rata di semua akun (Load Balancing)
         random.shuffle(pool_keys)
  
-        # Coba satu per satu kunci API di dalam pool
         for idx, api_key in enumerate(pool_keys):
             try:
                 if provider == "groq":
-                    teks_json = _call_groq(api_key, cfg["model_id"], prompt)
+                    teks_json = _call_groq(api_key, cfg["model_id"], prompt, max_tokens=max_tokens)
                 elif provider == "gemini":
-                    teks_json = _call_gemini(api_key, cfg["model_id"], prompt, cfg.get("thinking", "level"))
+                    teks_json = _call_gemini(api_key, cfg["model_id"], prompt, cfg.get("thinking", "level"), max_output_tokens=max_tokens)
                 elif provider == "cerebras":
-                    teks_json = _call_cerebras(api_key, cfg["model_id"], prompt)
+                    teks_json = _call_cerebras(api_key, cfg["model_id"], prompt, max_tokens=max_tokens)
                 elif provider == "mistral":
-                    teks_json = _call_mistral(api_key, cfg["model_id"], prompt)
+                    teks_json = _call_mistral(api_key, cfg["model_id"], prompt, max_tokens=max_tokens)
                 else:
                     break
      
-                # Bersihkan sisa markdown jika ada
                 teks_bersih = teks_json.strip().replace('```json', '').replace('```', '').strip()
      
                 hasil = json.loads(teks_bersih)
@@ -272,7 +185,7 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
      
             except json.JSONDecodeError as e:
                 print(f"   -> [Error JSON] {cfg['nama']}: {e}")
-                break # Ini error dari output AI, bukan limit. Lompat ke model berikutnya.
+                break
      
             except Exception as e:
                 err = str(e).lower()
@@ -284,13 +197,13 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
                 if is_rate_limit:
                     print(f"   -> [⚠️ Limit] Kunci ke-{idx+1} habis! Coba Kunci Cadangan {provider}...")
                     time.sleep(1)
-                    continue # COBA KUNCI SELANJUTNYA!
+                    continue
                 elif is_not_found:
                     print(f"   -> [❌ Model 404] {cfg['nama']} → model tidak ditemukan, lewati.")
-                    break # Lompat ke model AI berikutnya
+                    break
                 else:
                     print(f"   -> [Error] {cfg['nama']}: {err[:120]}")
-                    break # Lompat ke model AI berikutnya
+                    break
  
     return {
         "status": "error",

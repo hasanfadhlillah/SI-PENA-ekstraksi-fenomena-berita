@@ -11,61 +11,64 @@ from groq import Groq
 from google import genai as google_genai
 from google.genai import types as google_types
 
-# FIX #2: satu sumber kebenaran untuk ambang skor minimum, bukan hardcode lagi
 from .config import DEFAULT_MIN_SKOR
+from .model_stack import AI_MODEL_CATALOG as SCREENER_STACK, MAX_TOKENS_SCREENING
 
-# ─── KONFIGURASI MODEL STACK ──────────────────────────────────────────────────
-SCREENER_STACK = [
-    {
-        "nama"      : "Groq — GPT-OSS 120B",
-        "provider"  : "groq",
-        "model_id"  : "openai/gpt-oss-120b"
-    },
-    {
-        "nama"      : "Google — Gemini 3.1 Flash-Lite",
-        "provider"  : "gemini",
-        "model_id"  : "gemini-3.1-flash-lite",
-        "thinking"  : "level"
-    },
-    {
-        "nama"      : "Google — Gemini 3.5 Flash",
-        "provider"  : "gemini",
-        "model_id"  : "gemini-3.5-flash",
-        "thinking"  : "level"
-    },
-    {
-        "nama"      : "Google — Gemma 4 26B",
-        "provider"  : "gemini",
-        "model_id"  : "gemma-4-26b-a4b-it",
-        "thinking"  : "none"
-    },
-    {
-        "nama"      : "Google — Gemma 4 31B",
-        "provider"  : "gemini",
-        "model_id"  : "gemma-4-31b-it",
-        "thinking"  : "none"
-    },
-    {
-        "nama"      : "Cerebras — GPT-OSS 120B",
-        "provider"  : "cerebras",
-        "model_id"  : "gpt-oss-120b"
-    },
-    {
-        "nama"      : "Cerebras — Zai GLM 4.7",
-        "provider"  : "cerebras",
-        "model_id"  : "zai-glm-4.7"
-    },
-    {
-        "nama"      : "Cerebras — Gemma 4 31B",
-        "provider"  : "cerebras",
-        "model_id"  : "gemma-4-31b"
-    },
-    {
-        "nama"      : "Mistral — Mistral Small",
-        "provider"  : "mistral",
-        "model_id"  : "mistral-small-latest"
-    }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FIX #11 — Referensi eksplisit wilayah Jawa Tengah untuk validasi geografi
+# ═══════════════════════════════════════════════════════════════════════════
+# 35 Kabupaten/Kota resmi Provinsi Jawa Tengah (29 kabupaten + 6 kota).
+# Dipakai sebagai (a) ground-truth di prompt AI, dan (b) validasi programatik
+# non-AI sebagai lapis kedua.
+DAFTAR_KABKOTA_JATENG = [
+    "cilacap", "banyumas", "purbalingga", "banjarnegara", "kebumen", "purworejo",
+    "wonosobo", "magelang", "boyolali", "klaten", "sukoharjo", "wonogiri",
+    "karanganyar", "sragen", "grobogan", "blora", "rembang", "pati", "kudus",
+    "jepara", "demak", "semarang", "temanggung", "kendal", "batang",
+    "pekalongan", "pemalang", "tegal", "brebes", "surakarta", "solo", "salatiga",
 ]
+
+# Kabupaten/kota dari provinsi LAIN yang namanya rawan tertukar/rancu dengan
+# konteks pencarian generik kita (mis. "panen padi", "harga beras") padahal
+# BUKAN Jawa Tengah. Dipakai untuk mendeteksi kasus false-positive
+DAFTAR_KABKOTA_RAWAN_TERTUKAR_BUKAN_JATENG = [
+    "tulungagung", "kediri", "blitar", "jombang", "ngawi", "madiun", "ponorogo",
+    "nganjuk", "trenggalek", "pacitan", "magetan", "bojonegoro", "tuban",
+    "lamongan", "gresik", "sidoarjo", "mojokerto", "pasuruan", "probolinggo",
+    "situbondo", "bondowoso", "jember", "banyuwangi", "malang", "surabaya",
+    "denpasar", "badung", "gianyar", "palembang", "medan", "makassar",
+]
+
+
+def _validasi_wilayah_programatik(judul: str, teks: str, wilayah: str) -> bool | None:
+    """
+    Lapis kedua (non-AI) untuk validasi wilayah, khusus level Jawa Tengah..
+
+    Return:
+        True  -> terdeteksi menyebut kab/kota Jateng resmi (mendukung wilayah_valid)
+        False -> terdeteksi menyebut kab/kota provinsi lain yang rawan tertukar,
+                 TANPA disertai penyebutan Jateng/Jawa Tengah/Magelang -> AI
+                 kemungkinan salah, override jadi tidak valid
+        None  -> tidak ada sinyal kuat ke arah manapun, serahkan ke keputusan AI
+    """
+    if "jawa tengah" not in wilayah.lower() and "jateng" not in wilayah.lower():
+        return None  # cek ini hanya relevan untuk level Provinsi Jawa Tengah
+
+    gabungan = f"{judul} {teks}".lower()
+
+    sebut_jateng_eksplisit = (
+        "jawa tengah" in gabungan or "jateng" in gabungan or
+        any(k in gabungan for k in DAFTAR_KABKOTA_JATENG)
+    )
+    sebut_rawan_tertukar = any(k in gabungan for k in DAFTAR_KABKOTA_RAWAN_TERTUKAR_BUKAN_JATENG)
+
+    if sebut_rawan_tertukar and not sebut_jateng_eksplisit:
+        return False
+    if sebut_jateng_eksplisit:
+        return True
+    return None
+
 
 def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
     """
@@ -81,6 +84,9 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
         if not pool_keys:
             continue
 
+        # FIX #12: max_tokens per provider dari 1 sumber kebenaran bersama
+        max_tokens = MAX_TOKENS_SCREENING.get(provider, 2000)
+
         random.shuffle(pool_keys)
         for idx, api_key in enumerate(pool_keys):
             try:
@@ -93,7 +99,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                             {"role": "user",   "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=2000,
+                        max_tokens=max_tokens,
                         response_format={"type": "json_object"}
                     )
                     if "gpt-oss" in model_id:
@@ -109,7 +115,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     gabung = f"SYSTEM: Validator berita BPS. Balas HANYA JSON murni.\n\nUSER: {prompt}"
                     gemini_config_kwargs = dict(
                         temperature=0.1,
-                        max_output_tokens=2000,
+                        max_output_tokens=max_tokens,
                         response_mime_type="application/json",
                     )
                     thinking = cfg.get("thinking", "level")
@@ -137,7 +143,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                             {"role": "user",   "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=2000,
+                        max_tokens=max_tokens,
                         response_format={"type": "json_object"}
                     )
                     if "gpt-oss" in model_id:
@@ -160,7 +166,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                             {"role": "user",   "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=600,
+                        max_tokens=max_tokens,   # FIX #12: dulu hardcode 600, sekarang 2000 (konsisten dgn provider lain)
                         response_format={"type": "json_object"}
                     )
                     teks = resp.choices[0].message.content
@@ -195,26 +201,44 @@ def screening_satu_artikel(
     artikel: dict,
     nama_kategori: str,
     wilayah: str,
-    min_skor: int = DEFAULT_MIN_SKOR,   # FIX #2: parameter baru, bukan hardcode lagi
+    min_skor: int = DEFAULT_MIN_SKOR,
 ) -> dict:
     """
     Screening artikel untuk BPS Kota Magelang.
+
+    ATURAN GEOGRAFI YANG BENAR:
+    ✅ LOLOS: Artikel menyebut Kota Magelang secara eksplisit
+    ✅ LOLOS: Artikel dari wilayah Kabupaten Magelang/sekitarnya YANG JUGA menyebut/berkaitan
+              langsung dengan Kota Magelang (fokus tetap Kota Magelang, bukan sekadar sama-sama
+              "Magelang")
+    ✅ LOLOS: Artikel Jawa Tengah (provinsi Kota Magelang berada)
+    ✅ LOLOS: Artikel NASIONAL dari Kementerian/Badan/Pemerintah Pusat
+              yang dampaknya ke SELURUH Indonesia (otomatis termasuk Kota Magelang)
+    ❌ TOLAK: Artikel murni Kabupaten Magelang (topik administratif/lokal Kabupaten semata)
+              yang TIDAK menyebut dan TIDAK jelas berkaitan dengan Kota Magelang
+    ❌ TOLAK: Artikel dari provinsi LAIN (Jatim, Bali, Sumsel, Kalsel, dll)
+              yang tidak menyebut Magelang/Jawa Tengah sama sekali
+    ❌ TOLAK: Artikel opini/berita tanpa data angka apapun
     """
     teks_pendek = artikel.get("teks", "")[:4000]
     judul       = artikel.get("judul", "")
+    # FIX #6: prioritaskan "url" (bersih dari scraper.py) di atas "url_asli"
     url         = artikel.get("url", artikel.get("url_asli", ""))
-    # Tentukan konteks level untuk AI
+
     wilayah_lower = wilayah.lower()
     if "kota magelang" in wilayah_lower:
         level_info = "Level 1 - KOTA MAGELANG (target utama)"
     elif "kabupaten magelang" in wilayah_lower:
         level_info = "Level 2 - KABUPATEN MAGELANG (fallback, HARUS tetap terkait Kota Magelang)"
     elif "kedu" in wilayah_lower:
-        level_info = "Level 3 - EKS-KARESIDENAN KEDU (fallback, HARUS tetap terkait Kota Magelang/Jateng)"
+        level_info = "Level 3 - WILAYAH SEKITAR MAGELANG (fallback, HARUS tetap terkait Kota Magelang/Jateng)"
     elif "jawa tengah" in wilayah_lower or "jateng" in wilayah_lower:
         level_info = "Level 4 - PROVINSI JAWA TENGAH (fallback)"
     else:
         level_info = "Level 5 - NASIONAL/INDONESIA (fallback terakhir)"
+
+    # FIX #11: daftar 35 kab/kota Jateng resmi disisipkan sebagai ground-truth
+    daftar_jateng_str = ", ".join(k.title() for k in DAFTAR_KABKOTA_JATENG)
 
     prompt = f"""
         Kamu adalah validator berita untuk BPS KOTA MAGELANG, Jawa Tengah, Indonesia.
@@ -230,6 +254,13 @@ def screening_satu_artikel(
         FOKUS UTAMA: Data/fenomena untuk KOTA MAGELANG. Wilayah lain (Kabupaten Magelang, Jateng,
         Nasional) hanya relevan sebagai KONTEKS/DAMPAK terhadap Kota Magelang, bukan topik yang
         berdiri sendiri.
+        === REFERENSI RESMI: 35 KABUPATEN/KOTA PROVINSI JAWA TENGAH ===
+        {daftar_jateng_str}
+        Jika sebuah artikel menyebut nama kabupaten/kota yang TIDAK ADA di daftar ini (dan bukan
+        berasal dari Kementerian/Lembaga Pusat), KEMUNGKINAN BESAR itu BUKAN wilayah Jawa Tengah.
+        JANGAN tandai wilayah_valid=true hanya karena kebetulan ada kata "Jawa" atau nama daerah yang
+        mirip — pastikan daerah yang disebut benar-benar masuk daftar di atas, ATAU artikel juga
+        secara eksplisit menyebut "Jawa Tengah"/"Jateng"/"Magelang".
         === DATA ARTIKEL ===
         JUDUL: {judul}
         URL: {url}
@@ -246,17 +277,19 @@ def screening_satu_artikel(
            Magelang" secara eksplisit, ATAU yang jelas-jelas menggambarkan kondisi/kebijakan yang
            sama-sama berlaku untuk Kota Magelang (misal harga pasar regional, kebijakan gabungan
            Kota-Kabupaten, bencana yang berdampak ke keduanya)
-        3. ✅ Artikel yang membahas kondisi di "Jawa Tengah" atau "Jateng" (provinsi Kota Magelang)
+        3. ✅ Artikel yang membahas kondisi di "Jawa Tengah" atau "Jateng" (provinsi Kota Magelang),
+           DENGAN kabupaten/kota yang disebut benar-benar terdaftar di 35 kab/kota Jateng di atas
         4. ✅ Artikel NASIONAL dari KEMENTERIAN/BADAN/PEMERINTAH PUSAT (contoh: Kementan, Bulog, BPS Pusat, Bapanas, dll) yang menetapkan kebijakan/data berlaku SELURUH Indonesia — otomatis berdampak ke Kota Magelang
         JENIS ARTIKEL YANG WAJIB DITOLAK:
         1. ❌ Artikel yang HANYA membahas Kabupaten Magelang secara administratif/lokal (misal proyek desa, kegiatan pemkab semata) TANPA menyebut atau berkaitan jelas dengan Kota Magelang
-        2. ❌ Artikel dari PROVINSI LAIN (Jawa Timur, Bali, Sumatera Selatan, Kalimantan, Papua, dll) yang TIDAK menyebut Magelang atau Jawa Tengah sama sekali
+        2. ❌ Artikel dari PROVINSI LAIN (Jawa Timur, Bali, Sumatera Selatan, Kalimantan, Papua, dll) yang TIDAK menyebut Magelang atau Jawa Tengah sama sekali — termasuk kabupaten/kota yang TIDAK ADA di daftar 35 kab/kota Jateng di atas
         3. ❌ Artikel yang hanya membahas kota/kabupaten lain di luar Jawa Tengah tanpa kaitan ke Magelang
         4. ❌ Artikel opini/lifestyle/hiburan tanpa data statistik apapun
         5. ❌ Artikel tentang topik yang SAMA SEKALI tidak berkaitan dengan kategori "{nama_kategori}"
         CONTOH KEPUTUSAN:
         - "Produksi Padi Jatim Tembus 8,7 Juta Ton" → ❌ TOLAK (Jatim bukan Jateng, tidak sebut Magelang)
         - "Harga Beras di Bali Stabil" → ❌ TOLAK (Bali bukan Jateng)
+        - "Bulog Tulungagung Gelontorkan Ratusan Ton Beras" → ❌ TOLAK (Tulungagung TIDAK ADA di daftar 35 kab/kota Jateng — itu Jawa Timur, meski sekilas mirip konteks Jawa)
         - "Pemkab Magelang Resmikan Jalan Desa di Kecamatan Salaman" → ❌ TOLAK (murni administratif Kabupaten, tidak menyebut/berkaitan dengan Kota Magelang)
         - "Harga Cabai di Pasar Rejowinangun Kota Magelang dan Pasar Muntilan Kabupaten Magelang Kompak Naik" → ✅ LOLOS (menyebut Kota Magelang secara eksplisit meski juga membahas Kabupaten)
         - "Kementan: Produksi Beras Nasional Naik 15%" → ✅ LOLOS (kebijakan nasional, berdampak ke semua daerah termasuk Kota Magelang)
@@ -308,6 +341,24 @@ def screening_satu_artikel(
         hasil["judul"]           = judul
         hasil["teks"]            = artikel.get("teks", "")
         hasil["_model_screener"] = model_terpakai
+
+        # ═══════════════════════════════════════════════════════════════════
+        # FIX #11 — Lapis kedua non-AI: override wilayah_valid kalau AI keliru
+        # ═══════════════════════════════════════════════════════════════════
+        validasi_programatik = _validasi_wilayah_programatik(judul, artikel.get("teks", ""), wilayah)
+        if validasi_programatik is False and hasil.get("wilayah_valid") is True:
+            print(
+                f"      ⚠️ [Validasi Geografi] AI bilang wilayah_valid=True tapi artikel menyebut "
+                f"kab/kota di luar Jateng tanpa konteks Jateng/Magelang. Override jadi False."
+            )
+            hasil["wilayah_valid"] = False
+            hasil["layak_ekstrak"] = False
+            hasil["alasan_singkat"] = (
+                str(hasil.get("alasan_singkat", "")) +
+                " [Dikoreksi otomatis: artikel menyebut kabupaten/kota di luar Jawa Tengah "
+                "tanpa kaitan eksplisit ke Jawa Tengah/Magelang.]"
+            )
+
         return hasil
     except Exception as e:
         print(f"      ⚠️ Screening Gagal Total untuk {url[:50]}: {e}")
@@ -325,13 +376,32 @@ def screening_batch(
     list_artikel: list[dict],
     nama_kategori: str,
     wilayah: str,
-    min_skor: int = DEFAULT_MIN_SKOR,   # FIX #2: default referensi ke config, bukan angka mati
+    min_skor: int = DEFAULT_MIN_SKOR,
     jeda_detik: float = 1.0,
-    max_artikel: int = 15
+    max_artikel: int = 15,
+    target_minimal: int | None = None,   # FIX #10: opsional, aktifkan batch lanjutan
+    callback_log=None,                   # FIX #10: teruskan log ke UI, bukan cuma print
 ) -> tuple[list[dict], list[dict]]:
+    """
+    FIX #10: dulu artikel yang melebihi `max_artikel` (default 15) langsung
+    dibuang tanpa pernah dinilai AI sama sekali — tanpa notifikasi jelas ke
+    user. Sekarang:
+    1. Log eksplisit berapa artikel yang TIDAK dinilai pada batch pertama.
+    2. Jika target_minimal diberikan dan hasil batch pertama masih kurang,
+       lanjutkan screening batch KEDUA (dibatasi hanya 1 putaran tambahan,
+       supaya waktu eksekusi tetap terkendali — lihat juga fix #3) dari sisa
+       artikel yang belum dinilai.
+    3. Log eksplisit lagi kalau masih ada sisa yang benar-benar tidak sempat
+       dinilai setelah 2 putaran.
+    """
     if not list_artikel:
         return [], []
-    # Prioritaskan artikel yang ada "magelang" di judul/URL
+
+    def _log(pesan: str):
+        print(pesan)
+        if callback_log:
+            callback_log(pesan)
+
     def skor_prioritas(art):
         teks_cek = (art.get("judul", "") + art.get("url", "")).lower()
         if "kota magelang" in teks_cek:
@@ -344,42 +414,77 @@ def screening_batch(
             return 3
 
     list_artikel_sorted = sorted(list_artikel, key=skor_prioritas)
-    if len(list_artikel_sorted) > max_artikel:
-        print(f"   ⚠️ {len(list_artikel_sorted)} artikel dipotong ke {max_artikel} (prioritas: Magelang > Jateng > Nasional)")
-        list_artikel_sorted = list_artikel_sorted[:max_artikel]
+    total_tersedia = len(list_artikel_sorted)
 
-    # Label tampilan wilayah
     wilayah_lower = wilayah.lower()
     if "kota magelang" in wilayah_lower:
         tampilan = "KOTA MAGELANG"
     elif "kabupaten magelang" in wilayah_lower:
         tampilan = "KABUPATEN MAGELANG"
     elif "kedu" in wilayah_lower:
-        tampilan = "EKS-KARESIDENAN KEDU"
+        tampilan = "WILAYAH SEKITAR MAGELANG"
     elif "jawa tengah" in wilayah_lower or "jateng" in wilayah_lower:
         tampilan = "PROVINSI JAWA TENGAH"
     else:
         tampilan = "NASIONAL / INDONESIA"
 
-    print(f"\n   🤖 AI Screening {len(list_artikel_sorted)} artikel untuk '{nama_kategori}' di {tampilan} (ambang skor: {min_skor}/10)...")
-    lolos = []
-    gagal = []
-    for i, artikel in enumerate(list_artikel_sorted, 1):
-        print(f"      [{i}/{len(list_artikel_sorted)}] Menilai: {artikel.get('judul', '')[:55]}...")
-        # FIX #2: min_skor sekarang benar-benar diteruskan ke fungsi screening
-        # per-artikel, bukan cuma dipakai di gerbang akhir di bawah ini
-        hasil = screening_satu_artikel(api_keys, artikel, nama_kategori, wilayah, min_skor=min_skor)
-        skor  = hasil.get("skor_relevansi", 0)
-        layak = hasil.get("layak_ekstrak", False)
-        if skor >= min_skor and layak:
-            badge = "🟢" if skor >= 8 else "🟡"
+    def _screening_satu_batch(batch: list[dict], nomor_batch: int) -> tuple[list[dict], list[dict]]:
+        _log(
+            f"\n   🤖 AI Screening batch #{nomor_batch}: {len(batch)} artikel untuk "
+            f"'{nama_kategori}' di {tampilan} (ambang skor: {min_skor}/10)..."
+        )
+        lolos_batch, gagal_batch = [], []
+        for i, artikel in enumerate(batch, 1):
+            _log(f"      [{i}/{len(batch)}] Menilai: {artikel.get('judul', '')[:55]}...")
+            hasil = screening_satu_artikel(api_keys, artikel, nama_kategori, wilayah, min_skor=min_skor)
+            skor  = hasil.get("skor_relevansi", 0)
+            layak = hasil.get("layak_ekstrak", False)
             wilayah_valid = hasil.get("wilayah_valid", False)
-            print(f"         {badge} LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}")
-            lolos.append(hasil)
-        else:
-            wilayah_valid = hasil.get("wilayah_valid", False)
-            print(f"         🔴 TIDAK LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}")
-            gagal.append(hasil)
-        time.sleep(jeda_detik)
-    print(f"\n   📊 Screening selesai: {len(lolos)} lolos, {len(gagal)} tidak lolos")
+            if skor >= min_skor and layak:
+                badge = "🟢" if skor >= 8 else "🟡"
+                _log(f"         {badge} LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}")
+                lolos_batch.append(hasil)
+            else:
+                _log(f"         🔴 TIDAK LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}")
+                gagal_batch.append(hasil)
+            time.sleep(jeda_detik)
+        return lolos_batch, gagal_batch
+
+    # ── Batch pertama ──
+    batch_pertama = list_artikel_sorted[:max_artikel]
+    sisa_belum_dinilai = list_artikel_sorted[max_artikel:]
+
+    if sisa_belum_dinilai:
+        _log(
+            f"   ⚠️ {total_tersedia} artikel tersedia, dibatasi {max_artikel} untuk batch "
+            f"pertama (prioritas: Magelang > Jateng > Nasional). {len(sisa_belum_dinilai)} "
+            f"artikel BELUM dinilai sama sekali pada tahap ini."
+        )
+
+    lolos, gagal = _screening_satu_batch(batch_pertama, nomor_batch=1)
+
+    # ── FIX #10: batch lanjutan (maksimal 1 putaran tambahan) ──
+    if target_minimal is not None and len(lolos) < target_minimal and sisa_belum_dinilai:
+        batch_kedua = sisa_belum_dinilai[:max_artikel]
+        sisa_setelah_batch_kedua = sisa_belum_dinilai[max_artikel:]
+        _log(
+            f"   🔁 Hasil batch pertama ({len(lolos)} lolos) belum capai target minimal "
+            f"({target_minimal}). Melanjutkan screening {len(batch_kedua)} artikel tambahan..."
+        )
+        lolos_2, gagal_2 = _screening_satu_batch(batch_kedua, nomor_batch=2)
+        lolos.extend(lolos_2)
+        gagal.extend(gagal_2)
+
+        if sisa_setelah_batch_kedua:
+            _log(
+                f"   ℹ️ Masih ada {len(sisa_setelah_batch_kedua)} artikel yang belum dinilai "
+                f"setelah 2 batch (dihentikan agar waktu eksekusi tetap wajar)."
+            )
+    elif sisa_belum_dinilai:
+        _log(
+            f"   ℹ️ {len(sisa_belum_dinilai)} artikel tidak dinilai pada level ini "
+            f"(target_minimal tidak diaktifkan, atau hasil batch pertama sudah mencukupi)."
+        )
+
+    _log(f"\n   📊 Screening selesai: {len(lolos)} lolos, {len(gagal)} tidak lolos")
     return lolos, gagal
