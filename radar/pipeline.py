@@ -90,6 +90,10 @@ def _jalankan_pipeline_satu_level(
     _log(f"📰 {len(hasil_search)} artikel dari search engine")
 
     # Gerbang 3: Filter URL sudah ada di DB
+    # FIX #1d: simpan dulu metadata (tanggal, judul, tanggal_pasti) dari hasil
+    # pencarian SEBELUM disederhanakan jadi daftar URL — supaya tidak hilang
+    # begitu saja saat masuk tahap scraping (bug lama).
+    metadata_by_url = {item["url"]: item for item in hasil_search}
     list_url = [item["url"] for item in hasil_search]
     url_baru, warnings = filter_url_baru(list_url, paksa_proses_ulang)
 
@@ -106,7 +110,15 @@ def _jalankan_pipeline_satu_level(
 
     # Gerbang 4: Parallel Scraping
     _log(f"📥 Scraping {len(url_baru)} artikel secara paralel...")
-    artikel_scraped = fetch_parallel(url_baru, max_workers=5)
+    # FIX #1d: teruskan metadata_by_url + rentang tanggal supaya fetcher.py bisa
+    # melakukan validasi ulang rentang tanggal (lapis pertahanan kedua)
+    artikel_scraped = fetch_parallel(
+        url_baru,
+        metadata_by_url=metadata_by_url,
+        tanggal_mulai=tanggal_mulai,
+        tanggal_selesai=tanggal_selesai,
+        max_workers=5,
+    )
     if not artikel_scraped:
         _log("⚠️ Semua URL gagal di-scrape")
         return []
