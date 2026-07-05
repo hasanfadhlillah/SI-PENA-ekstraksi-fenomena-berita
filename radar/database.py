@@ -9,6 +9,9 @@ import sqlite3
 import os
 from datetime import datetime
 
+# FIX #2: satu sumber kebenaran untuk ambang skor minimum, bukan hardcode lagi
+from .config import DEFAULT_MIN_SKOR
+
 # Path database — selalu di root folder proyek
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sifeno_tracker.db")
 
@@ -28,7 +31,6 @@ def inisialisasi_database():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Tabel 1: Riwayat semua artikel yang pernah ditemukan radar
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS riwayat_artikel (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +49,6 @@ def inisialisasi_database():
         )
     """)
 
-    # Tabel 2: Status ringkas per kategori PDRB per triwulan
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS status_kategori (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +61,6 @@ def inisialisasi_database():
         )
     """)
 
-    # Tabel 3: Hasil 12 variabel ekstraksi fenomena (untuk download massal Tab 3)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS hasil_ekstraksi (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -176,10 +176,21 @@ def tandai_artikel_ditolak(url: str):
     conn.close()
 
 
-def ambil_artikel_valid(kategori: str, triwulan: str) -> list[dict]:
+def ambil_artikel_valid(
+    kategori: str,
+    triwulan: str,
+    min_skor: int = DEFAULT_MIN_SKOR,   # FIX #2: parameter baru, bukan hardcode 6 lagi
+) -> list[dict]:
     """
     Ambil semua artikel yang lolos seleksi untuk kategori & triwulan tertentu.
-    Hanya yang status = 'ditemukan' (belum diekstrak, belum ditolak).
+    Hanya yang status = 'ditemukan' (belum diekstrak, belum ditolak) DAN
+    skor_relevansi >= min_skor.
+
+    FIX #2: dulu ambang skor di query ini di-hardcode `>= 6` secara independen
+    dari slider "Skor Minimum Lolos" di UI. Sekarang menerima parameter
+    `min_skor` (default ke `DEFAULT_MIN_SKOR` dari config.py) supaya staf bisa
+    menyaring ulang tampilan antrean sesuai ambang yang sedang dipilih di UI,
+    tanpa perlu scan ulang.
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -188,9 +199,9 @@ def ambil_artikel_valid(kategori: str, triwulan: str) -> list[dict]:
         WHERE kategori_pdrb = ?
           AND triwulan      = ?
           AND status        = 'ditemukan'
-          AND skor_relevansi >= 6
+          AND skor_relevansi >= ?
         ORDER BY skor_relevansi DESC
-    """, (kategori, triwulan))
+    """, (kategori, triwulan, min_skor))
     hasil = [dict(b) for b in cursor.fetchall()]
     conn.close()
     return hasil

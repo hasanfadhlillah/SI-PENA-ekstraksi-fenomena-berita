@@ -16,6 +16,7 @@ from .fetcher        import fetch_parallel
 from .screener       import screening_batch
 from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya,
                              buat_pesan_anti_buntu, siapkan_keyword_fallback)
+from .config         import DEFAULT_MIN_SKOR
 
 load_dotenv()
 
@@ -49,7 +50,7 @@ def _jalankan_pipeline_satu_level(
     tanggal_mulai: str,
     tanggal_selesai: str,
     triwulan: str,
-    min_skor: int = 6,
+    min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
     callback_log=None,
 ) -> list[dict]:
@@ -163,7 +164,7 @@ def scan_kategori(
     nama_kategori: str,
     tanggal_mulai: str,
     tanggal_selesai: str,
-    min_skor: int = 6,
+    min_skor: int = DEFAULT_MIN_SKOR,
     aktifkan_fallback: bool = True,
     paksa_proses_ulang: bool = False,
     scan_semua_level: bool = True,
@@ -271,7 +272,7 @@ def batch_scan_semua_kategori(
     daftar_kategori: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    min_skor: int = 6,
+    min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
     callback_progress=None
 ) -> dict:

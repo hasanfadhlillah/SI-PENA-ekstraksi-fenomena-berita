@@ -23,6 +23,7 @@ from radar.database import (
     get_connection
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
+from radar.config import DEFAULT_MIN_SKOR
 from scraper import scrape_berita
 from ai_engine import ekstrak_fenomena_ai
 
@@ -441,7 +442,7 @@ with st.sidebar:
     st.success(f"📌 Periode: **{triwulan_berjalan}**")
 
     st.markdown("### 🎛️ Pengaturan AI Radar")
-    min_skor    = st.slider("Skor Minimum Lolos", 1, 10, 6,
+    min_skor    = st.slider("Skor Minimum Lolos", 1, 10, DEFAULT_MIN_SKOR,
                             help="Filter seberapa ketat AI menyeleksi berita.")
     paksa_ulang = st.toggle("🔄 Proses Ulang Artikel Lama", value=False,
                             help="Jika diaktifkan, Radar akan men-scan ulang berita yang pernah ditolak/gagal.")
@@ -723,7 +724,9 @@ with tab1:
             st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
 
     if kat_antrean != "— Pilih Kategori —":
-        artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan)
+        # FIX #2: teruskan slider min_skor supaya tampilan antrean konsisten
+        # dengan ambang yang dipilih user, bukan hardcode 6 di database.py
+        artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan, min_skor=min_skor)
         if not artikel_db:
             st.info("🎉 Kosong! Semua artikel di kategori ini sudah diekstrak atau belum ada scan baru.")
         else:
