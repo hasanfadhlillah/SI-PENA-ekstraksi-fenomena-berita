@@ -154,6 +154,7 @@ DAFTAR_KATEGORI = [
     "Industri Kimia, Farmasi dan Obat Tradisional", "Industri Karet, Barang dari Karet dan Plastik",
     "Industri Barang Galian bukan Logam", "Industri Logam Dasar",
     "Industri Barang dari Logam, Komputer, Elektronik", "Industri Alat Angkutan", "Industri Furnitur",
+    "Industri Pengolahan Lainnya, Jasa Reparasi, Pemasangan Mesin dan Peralatan",
     "Ketenagalistrikan", "Pengadaan Gas dan Produksi Es", "Pengadaan Air", "Konstruksi",
     "Perdagangan Mobil, Sepeda Motor dan Reparasinya", "Perdagangan Besar dan Eceran",
     "Angkutan Rel", "Angkutan Darat", "Angkutan Laut", "Angkutan Udara",
@@ -163,6 +164,37 @@ DAFTAR_KATEGORI = [
     "Administrasi Pemerintahan dan Jaminan Sosial", "Jasa Pendidikan",
     "Jasa Kesehatan dan Kegiatan Sosial", "Jasa Lainnya", "PRODUK DOMESTIK BRUTO"
 ]
+
+# Validasi otomatis sinkronisasi DAFTAR_KATEGORI vs keywords.json
+def _validasi_sinkronisasi_kategori():
+    try:
+        kw_data = _load_keywords()
+        set_dropdown = set(DAFTAR_KATEGORI)
+        set_keywords = set(kw_data.keys())
+
+        hilang_dari_dropdown = set_keywords - set_dropdown
+        hilang_dari_keywords = set_dropdown - set_keywords
+
+        if hilang_dari_dropdown or hilang_dari_keywords:
+            with st.sidebar:
+                with st.expander("⚠️ Peringatan: Sinkronisasi Kategori", expanded=False):
+                    if hilang_dari_dropdown:
+                        st.warning(
+                            f"**{len(hilang_dari_dropdown)} kategori** ada di `keywords.json` "
+                            f"tapi TIDAK ADA di dropdown Radar (tidak bisa dipilih user):"
+                        )
+                        for k in sorted(hilang_dari_dropdown):
+                            st.caption(f"• {k}")
+                    if hilang_dari_keywords:
+                        st.warning(
+                            f"**{len(hilang_dari_keywords)} kategori** ada di dropdown Radar "
+                            f"tapi TIDAK ADA di `keywords.json` (akan otomatis pakai AI fallback "
+                            f"untuk generate keyword saat dipilih):"
+                        )
+                        for k in sorted(hilang_dari_keywords):
+                            st.caption(f"• {k}")
+    except Exception as e:
+        print(f"⚠️ [Validasi Kategori] Gagal cek sinkronisasi: {e}")
 
 # ─── Helper: konversi nilai AI ke string aman ─────────────────────────────────
 def _ke_str(nilai) -> str:
@@ -460,9 +492,9 @@ with st.sidebar:
         jumlah = _hitung_kunci(key_val)
         status = f"🟢 {jumlah} Amunisi Siap" if jumlah > 0 else "🔴 Kosong"
         st.caption(f"**{nama}:** {status}")
-
+    _validasi_sinkronisasi_kategori()
     st.markdown("---")
-    st.caption("v1.0 | Made with ❤️ by BPS Kota Magelang")
+    st.caption("v1.0 | Made with ❤️ for BPS Kota Magelang")
 
 # ─── MAIN TABS ───────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -1302,7 +1334,7 @@ with tab6:
         st.markdown("""
         <div style="background: linear-gradient(135deg, #f0f7ff, #e8f4ff);
                     border-radius: 12px; padding: 24px; text-align: center;">
-            <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">50+</div>
+            <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">51</div>
             <div style="font-size: 0.85rem; color: #555; margin-bottom: 20px;">Kategori PDRB yang didukung</div>
             <div style="font-size: 2.5rem; font-weight: 900; color: #003366;">5</div>
             <div style="font-size: 0.85rem; color: #555; margin-bottom: 20px;">Level fallback wilayah</div>
@@ -1378,7 +1410,7 @@ with tab6:
          "agar tidak terjadi pekerjaan ganda. URL baru/belum diproses dilanjutkan ke tahap scraping."),
         ("📥", "Parallel Scraping (Modul D)",
          "Semua URL baru di-scrape secara paralel menggunakan ThreadPoolExecutor. "
-         "3 metode scraping berlapis: Jina Reader API → Direct Request → Google Cache. "
+         "3 metode scraping berlapis: Jina Reader API → Direct Request → Wayback Machine. "
          "Teks hasil scraping dibersihkan dari noise navigasi dan elemen web."),
         ("🤖", "AI Pre-Screening (Modul E)",
          "Setiap artikel dibaca oleh AI dan diberi skor relevansi 1–10 berdasarkan "
@@ -1435,6 +1467,7 @@ with tab6:
         for tech, warna in [
             ("DuckDuckGo News", "#de5833"), ("Google News RSS", "#4285f4"),
             ("DuckDuckGo Web", "#de5833"), ("Jina Reader API", "#0d6efd"),
+            ("Wayback Machine", "#795548"),
         ]:
             st.markdown(
                 f'<span class="tech-chip" style="background:{warna}20; color:{warna}; border:1px solid {warna}40;">'

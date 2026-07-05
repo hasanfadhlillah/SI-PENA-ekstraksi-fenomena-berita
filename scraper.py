@@ -63,12 +63,10 @@ def _normalisasi_tanggal_terbit(raw: str) -> str:
         return ""
     raw = raw.strip()
 
-    # Format ISO 8601: 2026-06-23T10:00:00+07:00 atau 2026-06-23
     m = re.match(r'(\d{4})-(\d{2})-(\d{2})', raw)
     if m:
         return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
 
-    # Format Indonesia: "23 Juni 2026" / "23 juni 2026"
     m = re.search(r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})', raw)
     if m:
         tgl, bulan_str, tahun = m.groups()
@@ -88,9 +86,6 @@ def _ekstrak_tanggal_terbit(html: str) -> str:
     4. Tag <time datetime="...">
 
     Return string YYYY-MM-DD jika berhasil, "" jika tidak ditemukan/gagal parse.
-    Dipakai sebagai FIX untuk bug lama yang hardcode field "tanggal" jadi string
-    placeholder "Diekstrak otomatis oleh AI" — sekarang kalau ketemu, AI ekstraksi
-    (ai_engine.py) benar-benar dapat tanggal terbit asli, bukan teks yang menyesatkan.
     """
     if not html:
         return ""
@@ -130,7 +125,6 @@ def _metode_jina(url: str) -> dict | None:
         if resp.status_code != 200:
             return None
         data = resp.json().get("data", {})
-        # FIX #1c: Jina Reader kadang menyertakan field publishedTime di respons JSON-nya
         tanggal_mentah = data.get("publishedTime", "") or ""
         return {
             "judul": data.get("title", ""),
@@ -164,30 +158,63 @@ def _metode_direct(url: str) -> dict | None:
         if match:
             judul = match.group(1).strip()
 
-        # FIX #1c: ekstrak tanggal terbit asli dari HTML mentah SEBELUM dikonversi ke teks polos
         tanggal_terbit = _ekstrak_tanggal_terbit(html_mentah)
 
         return {"judul": judul, "teks": teks, "tanggal_terbit": tanggal_terbit}
     except Exception:
         return None
 
-def _metode_google_cache(url: str) -> dict | None:
-    """Metode 3: Google Cache sebagai fallback terakhir."""
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FIX #4 — Ganti Google Cache (100% mati) dengan Wayback Machine (masih aktif)
+# ═══════════════════════════════════════════════════════════════════════════
+def _metode_wayback(url: str) -> dict | None:
+    """
+    Metode 3: Wayback Machine (archive.org) — PENGGANTI Google Cache.
+    """
     try:
-        cache_url = f"https://webcache.googleusercontent.com/search?q=cache:{url}"
+        # Langkah 1: cek ketersediaan snapshot (cepat & ringan)
+        avail_resp = requests.get(
+            "https://archive.org/wayback/available",
+            params={"url": url},
+            timeout=10
+        )
+        if avail_resp.status_code != 200:
+            return None
+
+        data = avail_resp.json()
+        snapshot = data.get("archived_snapshots", {}).get("closest", {})
+        snapshot_url = snapshot.get("url", "")
+
+        if not snapshot_url or not snapshot.get("available", False):
+            return None
+
+        # Langkah 2: fetch HTML dari snapshot arsip
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             )
         }
-        resp = requests.get(cache_url, headers=headers, timeout=30)
+        resp = requests.get(snapshot_url, headers=headers, timeout=25)
         if resp.status_code != 200:
             return None
+
         html_mentah = resp.text
         teks = _html_ke_teks(html_mentah)
-        tanggal_terbit = _ekstrak_tanggal_terbit(html_mentah)  # FIX #1c
-        return {"judul": "Dari Google Cache", "teks": teks, "tanggal_terbit": tanggal_terbit}
+
+        judul = ""
+        match = re.search(r'<title[^>]*>(.*?)</title>', html_mentah, re.IGNORECASE | re.DOTALL)
+        if match:
+            judul = match.group(1).strip()
+            # Wayback Machine kadang menambahkan info arsip di title, bersihkan
+            judul = re.sub(r'\s*[\|\-–]\s*wayback machine\s*$', '', judul, flags=re.IGNORECASE).strip()
+
+        # Halaman snapshot Wayback biasanya masih menyimpan meta tag asli
+        # dari artikel sumbernya, jadi ekstraksi tanggal tetap bisa jalan
+        tanggal_terbit = _ekstrak_tanggal_terbit(html_mentah)
+
+        return {"judul": judul, "teks": teks, "tanggal_terbit": tanggal_terbit}
     except Exception:
         return None
 
@@ -218,14 +245,17 @@ def hitung_kata(teks: str) -> int:
 def scrape_berita(url: str) -> dict:
     """
     Scraper berlapis 3:
-    Jina Reader → Direct Request → Google Cache
+    Jina Reader → Direct Request → Wayback Machine
+
+    FIX #4: metode ke-3 diganti dari "Google Cache" (mati total) jadi
+    "Wayback Machine" (masih aktif) — lihat _metode_wayback() untuk detail.
     """
     clean_url = url.split('?')[0]
 
     metode_list = [
         ("Jina Reader API",   _metode_jina),
         ("Direct Request",    _metode_direct),
-        ("Google Cache",      _metode_google_cache),
+        ("Wayback Machine",   _metode_wayback),   # FIX #4: ganti dari Google Cache
     ]
 
     for nama_metode, fungsi in metode_list:
@@ -239,7 +269,7 @@ def scrape_berita(url: str) -> dict:
 
         judul          = hasil.get("judul", "")
         teks           = hasil.get("teks", "")
-        tanggal_terbit = hasil.get("tanggal_terbit", "")   # FIX #1c
+        tanggal_terbit = hasil.get("tanggal_terbit", "")
 
         if _is_cloudflare_block(judul, teks):
             print(f"   -> [Diblokir] {nama_metode}: Kena Cloudflare challenge.")
@@ -258,9 +288,6 @@ def scrape_berita(url: str) -> dict:
             "metode":               nama_metode,
             "url":                  clean_url,
             "judul":                judul or "Judul diekstrak AI",
-            # FIX #1c: bukan lagi hardcode placeholder — pakai tanggal asli jika
-            # berhasil ditemukan, kalau tidak biarkan kosong ("" = benar-benar
-            # tidak diketahui, bukan string yang menyesatkan)
             "tanggal":              tanggal_terbit,
             "tanggal_pasti_scrape": bool(tanggal_terbit),
             "teks":                 teks_bersih,
@@ -269,8 +296,8 @@ def scrape_berita(url: str) -> dict:
     return {
         "status": "error",
         "pesan": (
-            "Semua metode scraping gagal. "
-            "Situs ini diproteksi sangat ketat (Cloudflare Enterprise / Login Required). "
-            "Coba salin teks artikel secara manual."
+            "Semua metode scraping gagal (Jina Reader, Direct Request, Wayback Machine). "
+            "Situs ini diproteksi sangat ketat (Cloudflare Enterprise / Login Required) "
+            "dan belum pernah diarsipkan. Coba salin teks artikel secara manual."
         )
     }
