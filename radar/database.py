@@ -9,7 +9,6 @@ import sqlite3
 import os
 from datetime import datetime
 
-# FIX #2: satu sumber kebenaran untuk ambang skor minimum, bukan hardcode lagi
 from .config import DEFAULT_MIN_SKOR
 
 # Path database — selalu di root folder proyek
@@ -17,9 +16,19 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sifeno_track
 
 
 def get_connection() -> sqlite3.Connection:
-    """Membuat koneksi ke database SQLite."""
-    conn = sqlite3.connect(DB_PATH)
+    """
+    Membuat koneksi ke database SQLite.
+
+    - `timeout=30`: Python akan menunggu hingga 30 detik jika DB terkunci oleh
+      proses lain, sebelum akhirnya melempar error — bukan langsung gagal.
+    - `PRAGMA journal_mode=WAL`: mode Write-Ahead Logging memungkinkan operasi
+      baca (SELECT) berjalan bersamaan dengan operasi tulis (INSERT/UPDATE)
+      tanpa saling memblokir, jauh lebih ramah untuk skenario multi-sesi
+      Streamlit dibanding mode default (rollback journal).
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
 
@@ -179,18 +188,12 @@ def tandai_artikel_ditolak(url: str):
 def ambil_artikel_valid(
     kategori: str,
     triwulan: str,
-    min_skor: int = DEFAULT_MIN_SKOR,   # FIX #2: parameter baru, bukan hardcode 6 lagi
+    min_skor: int = DEFAULT_MIN_SKOR,
 ) -> list[dict]:
     """
     Ambil semua artikel yang lolos seleksi untuk kategori & triwulan tertentu.
     Hanya yang status = 'ditemukan' (belum diekstrak, belum ditolak) DAN
     skor_relevansi >= min_skor.
-
-    FIX #2: dulu ambang skor di query ini di-hardcode `>= 6` secara independen
-    dari slider "Skor Minimum Lolos" di UI. Sekarang menerima parameter
-    `min_skor` (default ke `DEFAULT_MIN_SKOR` dari config.py) supaya staf bisa
-    menyaring ulang tampilan antrean sesuai ambang yang sedang dipilih di UI,
-    tanpa perlu scan ulang.
     """
     conn = get_connection()
     cursor = conn.cursor()

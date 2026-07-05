@@ -33,8 +33,16 @@ API_KEYS_DICT = {
 }
 
 def _hitung_triwulan(tanggal_mulai: str) -> str:
-    """Konversi tanggal ke label triwulan. Format: 'TW1-2026'"""
-    dt = datetime.strptime(tanggal_mulai, "%Y-%m-%d")
+    """
+    Konversi tanggal ke label triwulan. Format: 'TW1-2026'
+    """
+    try:
+        dt = datetime.strptime(tanggal_mulai, "%Y-%m-%d")
+    except (ValueError, TypeError) as e:
+        raise ValueError(
+            f"Format tanggal tidak valid: '{tanggal_mulai}'. "
+            f"Format yang benar adalah YYYY-MM-DD, contoh: '2026-01-01'."
+        ) from e
     tw = (dt.month - 1) // 3 + 1
     return f"TW{tw}-{dt.year}"
 

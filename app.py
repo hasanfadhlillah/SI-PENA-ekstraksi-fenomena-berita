@@ -449,7 +449,7 @@ for key, default in [
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     if os.path.exists("logo_bps_magelang.png"):
-        st.image("logo_bps_magelang.png", use_container_width=True)
+        st.image("logo_bps_magelang.png", width='stretch')
 
     st.markdown("""
     <div style="margin-top: -10px; margin-bottom: 20px;">
@@ -470,8 +470,12 @@ with st.sidebar:
     if tanggal_mulai > tanggal_selesai:
         st.error("Tanggal mulai tidak boleh setelah tanggal selesai!")
 
-    triwulan_berjalan = _hitung_triwulan(tanggal_mulai.strftime("%Y-%m-%d"))
-    st.success(f"📌 Periode: **{triwulan_berjalan}**")
+    try:
+        triwulan_berjalan = _hitung_triwulan(tanggal_mulai.strftime("%Y-%m-%d"))
+        st.success(f"📌 Periode: **{triwulan_berjalan}**")
+    except ValueError as e:
+        st.error(f"⚠️ {e}")
+        st.stop()
 
     st.markdown("### 🎛️ Pengaturan AI Radar")
     min_skor    = st.slider("Skor Minimum Lolos", 1, 10, DEFAULT_MIN_SKOR,
@@ -601,7 +605,7 @@ with tab1:
                 help="Pilih 1 kategori untuk discan cepat, atau pilih BATCH SCAN untuk memproses semua kategori sekaligus."
             )
         with col_btn:
-            btn_scan = st.button("▶ SCAN", type="primary", use_container_width=True,
+            btn_scan = st.button("▶ SCAN", type="primary", width='stretch',
                                  help="Mulai pencarian dan filter AI.")
 
         if btn_scan:
@@ -610,6 +614,11 @@ with tab1:
             else:
                 mulai_str   = tanggal_mulai.strftime("%Y-%m-%d")
                 selesai_str = tanggal_selesai.strftime("%Y-%m-%d")
+                try:
+                    _hitung_triwulan(mulai_str)
+                except ValueError as e:
+                    st.error(f"⚠️ {e}")
+                    st.stop()
 
                 if pilihan_kategori == "✨ SEMUA KATEGORI (BATCH SCAN)":
                     prog   = st.progress(0)
@@ -711,7 +720,7 @@ with tab1:
                     .rename(columns={"kategori_pdrb": "Kategori",
                                      "jumlah_artikel_valid": "Artikel",
                                      "terakhir_scan": "Terakhir Scan"}),
-                    use_container_width=True, hide_index=True
+                    width='stretch', hide_index=True
                 )
         with col_buntu:
             st.markdown("**⚠️ Kategori Butuh Perhatian**")
@@ -720,7 +729,7 @@ with tab1:
                     kosong[["kategori_pdrb", "terakhir_scan"]]
                     .rename(columns={"kategori_pdrb": "Kategori",
                                      "terakhir_scan": "Terakhir Scan"}),
-                    use_container_width=True, hide_index=True
+                    width='stretch', hide_index=True
                 )
 
     st.markdown("---")
@@ -747,7 +756,7 @@ with tab1:
         st.markdown("**📎 Atau input URL manual (dari Google/Teman):**")
         url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
                                    label_visibility="collapsed")
-        if (st.button("📤 Kirim ke Ekstraktor Tab 2", use_container_width=True,
+        if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
                       help="Melewati antrean radar dan langsung mengirim link ke meja Ekstraktor.")
                 and url_manual):
             st.session_state.target_url = url_manual
@@ -813,7 +822,7 @@ with tab2:
             label_visibility="collapsed"
         )
         btn_ekstrak = st.button("🤖 MULAI EKSTRAK", type="primary",
-                                use_container_width=True,
+                                width='stretch',
                                 help="AI akan mulai membaca artikel secara penuh.")
 
     if btn_ekstrak:
@@ -897,7 +906,7 @@ with tab2:
             st.markdown("---")
             submit = st.form_submit_button(
                 "✅ FINALISASI & TANDAI SELESAI", type="primary",
-                use_container_width=True,
+                width='stretch',
                 help="Menyimpan hasil ke database agar laporan bisa didownload."
             )
 
@@ -966,7 +975,7 @@ with tab2:
                 data=_buat_excel_ekstraksi(jf),
                 file_name=_nama_file("EkstraksiFenomena", "xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="dl_xlsx"
+                width='stretch', type="primary", key="dl_xlsx"
             )
             st.caption("📊 Excel berformat rapi — paling direkomendasikan untuk laporan BPS")
 
@@ -978,7 +987,7 @@ with tab2:
                 "⬇️ Download CSV",
                 data=csv_buf.getvalue(),
                 file_name=_nama_file("EkstraksiFenomena", "csv"),
-                mime="text/csv", use_container_width=True, key="dl_csv"
+                mime="text/csv", width='stretch', key="dl_csv"
             )
             st.caption("📄 CSV — mudah digabungkan di database tabular")
 
@@ -987,7 +996,7 @@ with tab2:
                 "⬇️ Download JSON",
                 data=json.dumps(jf, indent=4, ensure_ascii=False).encode("utf-8"),
                 file_name=_nama_file("EkstraksiFenomena", "json"),
-                mime="application/json", use_container_width=True, key="dl_json"
+                mime="application/json", width='stretch', key="dl_json"
             )
             st.caption("🗂️ JSON — untuk integrasi antar aplikasi/developer")
 
@@ -996,7 +1005,7 @@ with tab2:
                 {"No": i+1, "Variabel BPS": lbl, "Hasil Ekstraksi": jf.get(k, "")}
                 for i, (k, lbl) in enumerate(LABEL_MAP_DL)
             ])
-            st.dataframe(df_preview, use_container_width=True, hide_index=True,
+            st.dataframe(df_preview, width='stretch', hide_index=True,
                          column_config={"Hasil Ekstraksi": st.column_config.TextColumn(width="large")})
 
         if st.button("🔄 Mulai Kerjakan Artikel Baru"):
@@ -1067,7 +1076,7 @@ with tab3:
         if filter_kat:    df_tampil = df_tampil[df_tampil["Kategori PDRB"].isin(filter_kat)]
 
         st.markdown(f"**Menampilkan {len(df_tampil)} dari {len(df_riwayat)} total entri di Database**")
-        st.dataframe(df_tampil.drop(columns=["URL"]), use_container_width=True, hide_index=True)
+        st.dataframe(df_tampil.drop(columns=["URL"]), width='stretch', hide_index=True)
 
         # ── [CHANGE 4 + 5]: Excel profesional + nama file standar ──────────
         st.markdown("**📤 Export Tabel Riwayat Radar:**")
@@ -1080,21 +1089,21 @@ with tab3:
                 data=_buat_excel_riwayat(df_tampil.drop(columns=["URL"])),
                 file_name=_nama_file("RiwayatRadar", "xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="dl_riwayat_xlsx"
+                width='stretch', type="primary", key="dl_riwayat_xlsx"
             )
         with col_e2:
             csv_exp = df_tampil.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "⬇️ Download CSV", data=csv_exp,
                 file_name=_nama_file("RiwayatRadar", "csv"),
-                mime="text/csv", use_container_width=True, key="dl_riwayat_csv"
+                mime="text/csv", width='stretch', key="dl_riwayat_csv"
             )
         with col_e3:
             json_riwayat = df_tampil.to_json(orient="records", force_ascii=False, indent=2)
             st.download_button(
                 "⬇️ Download JSON", data=json_riwayat.encode("utf-8"),
                 file_name=_nama_file("RiwayatRadar", "json"),
-                mime="application/json", use_container_width=True, key="dl_riwayat_json"
+                mime="application/json", width='stretch', key="dl_riwayat_json"
             )
 
     # ── DOWNLOAD MASSAL HASIL EKSTRAKSI ──────────────────────────────────────
@@ -1135,7 +1144,7 @@ with tab3:
         st.info("Belum ada hasil ekstraksi yang disimpan. Finalisasi berita di Tab 2 terlebih dahulu.")
     else:
         st.markdown(f"**Total {len(df_ekstraksi)} hasil ekstraksi tersimpan.**")
-        st.dataframe(df_ekstraksi.drop(columns=["URL"]), use_container_width=True, hide_index=True)
+        st.dataframe(df_ekstraksi.drop(columns=["URL"]), width='stretch', hide_index=True)
 
         # ── [CHANGE 3 + 4 + 5]: 3 tombol download + Excel profesional + nama standar ──
         col_d1, col_d2, col_d3 = st.columns(3)
@@ -1146,7 +1155,7 @@ with tab3:
                 data=_buat_excel_semua_ekstraksi(df_ekstraksi.drop(columns=["URL"])),
                 file_name=_nama_file("SemuaEkstraksi", "xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True, type="primary", key="dl_eks_xlsx"
+                width='stretch', type="primary", key="dl_eks_xlsx"
             )
             st.caption("📊 Excel berformat rapi — direkomendasikan untuk laporan BPS")
         with col_d2:
@@ -1155,7 +1164,7 @@ with tab3:
                 "⬇️ Download CSV",
                 data=csv_all,
                 file_name=_nama_file("SemuaEkstraksi", "csv"),
-                mime="text/csv", use_container_width=True, key="dl_eks_csv"
+                mime="text/csv", width='stretch', key="dl_eks_csv"
             )
             st.caption("📄 CSV — mudah digabungkan di database tabular")
         with col_d3:
@@ -1165,7 +1174,7 @@ with tab3:
                 "⬇️ Download JSON",
                 data=json_eks.encode("utf-8"),
                 file_name=_nama_file("SemuaEkstraksi", "json"),
-                mime="application/json", use_container_width=True, key="dl_eks_json"
+                mime="application/json", width='stretch', key="dl_eks_json"
             )
             st.caption("🗂️ JSON — untuk integrasi antar aplikasi/developer")
 
@@ -1216,7 +1225,7 @@ with tab4:
                 y=alt.Y('Jumlah Berita:Q',     title='Jumlah Berita'),
                 tooltip=['Tanggal Ditemukan', 'Jumlah Berita']
             ).interactive().properties(height=300)
-            st.altair_chart(chart_tren, use_container_width=True)
+            st.altair_chart(chart_tren, width='stretch')
 
         with col_c2:
             st.markdown("**📊 Status Antrean Berita**")
@@ -1229,7 +1238,7 @@ with tab4:
                                 scale=alt.Scale(scheme='category10')),
                 tooltip=['Status', 'Jumlah']
             ).properties(height=300)
-            st.altair_chart(chart_status, use_container_width=True)
+            st.altair_chart(chart_status, width='stretch')
 
         st.markdown("---")
         st.markdown("**🏆 Top 10 Kategori PDRB Paling Banyak Diberitakan**")
@@ -1241,7 +1250,7 @@ with tab4:
             y=alt.Y('Kategori:N', sort='-x', title=''),
             tooltip=['Kategori', 'Jumlah Berita']
         ).properties(height=350)
-        st.altair_chart(chart_bar, use_container_width=True)
+        st.altair_chart(chart_bar, width='stretch')
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1275,7 +1284,7 @@ with tab5:
                 )
                 new_keywords[key] = [k.strip() for k in edited.split("\n") if k.strip()]
 
-        if st.button("💾 Simpan Perubahan", type="primary", use_container_width=True):
+        if st.button("💾 Simpan Perubahan", type="primary", width='stretch'):
             kw_data[kat_edit] = new_keywords
             _save_keywords(kw_data)
             st.success(f"✅ Keyword untuk '{kat_edit}' berhasil disimpan!")
