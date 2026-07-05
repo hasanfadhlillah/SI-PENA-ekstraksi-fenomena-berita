@@ -32,9 +32,8 @@ def _resolve_google_news_url(google_url: str) -> str:
     2. Jika gagal, follow redirect HTTP (lebih lambat tapi reliable)
     """
     if not google_url or "news.google.com" not in google_url:
-        return google_url  # Bukan URL Google, kembalikan apa adanya
+        return google_url
 
-    # STRATEGI 1: Follow HTTP redirect (paling reliable)
     try:
         headers = {
             "User-Agent": (
@@ -45,14 +44,11 @@ def _resolve_google_news_url(google_url: str) -> str:
         }
         resp = requests.get(google_url, headers=headers, timeout=10, allow_redirects=True)
         final_url = resp.url
-
-        # Pastikan bukan halaman Google sendiri
         if "google.com" not in final_url and final_url != google_url:
             return _normalisasi_url(final_url)
     except Exception:
         pass
 
-    # STRATEGI 2: Coba decode dari encoded path (tanpa request, cepat)
     try:
         match = re.search(r'/articles/([A-Za-z0-9_-]+)', google_url)
         if match:
@@ -67,7 +63,6 @@ def _resolve_google_news_url(google_url: str) -> str:
     except Exception:
         pass
 
-    # Jika semua gagal, kembalikan URL Google aslinya
     return google_url
 
 
@@ -95,21 +90,11 @@ def _parse_tanggal(tanggal_str: str) -> str:
 def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
     """
     Tentukan parameter `timelimit` DDGS berdasarkan seberapa jauh `tanggal_selesai`
-    dari HARI INI — bukan dari lebar rentang (tanggal_mulai s.d. tanggal_selesai)
-    seperti kode lama.
-
-    BUG LAMA: `timelimit` DDGS artinya "berita N hari/minggu/bulan TERAKHIR DARI
-    SEKARANG", bukan "berita dalam rentang tanggal yang diminta". Kode lama
-    menghitung timelimit dari lebar rentang, sehingga scan untuk triwulan yang
-    sudah lewat jauh (mis. TW1-2026 dijalankan Juli 2026) tetap dikasih instruksi
-    "1 bulan terakhir" — arahnya jelas keliru, membuat DDGS mencari berita
-    Juni-Juli, bukan Januari-Maret.
-
-    Return "d"/"w"/"m" HANYA kalau tanggal_selesai masih cukup dekat dengan hari
-    ini (di mana filter timelimit DDGS memang relevan/berguna). Kalau sudah lebih
-    dari ~90 hari yang lalu, kembalikan None (JANGAN pakai timelimit sama sekali)
-    — biarkan `dalam_rentang_tanggal()` jadi satu-satunya penjaga rentang tanggal
-    yang sesungguhnya, dijalankan terhadap tanggal publikasi ASLI tiap artikel.
+    dari HARI INI — bukan dari lebar rentang (tanggal_mulai s.d. tanggal_selesai).
+    Return "d"/"w"/"m" hanya kalau tanggal_selesai masih cukup dekat dengan hari
+    ini; kalau sudah lebih dari ~90 hari yang lalu, kembalikan None (JANGAN pakai
+    timelimit sama sekali) — biarkan `dalam_rentang_tanggal()` jadi penjaga
+    rentang tanggal yang sesungguhnya.
     """
     try:
         dt_selesai = datetime.strptime(tanggal_selesai, "%Y-%m-%d")
@@ -118,7 +103,7 @@ def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
 
     jarak_hari = (datetime.now() - dt_selesai).days
     if jarak_hari < 0:
-        jarak_hari = 0  # tanggal_selesai di masa depan → anggap "sekarang"
+        jarak_hari = 0
 
     if jarak_hari <= 7:
         return "d"
@@ -126,7 +111,7 @@ def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
         return "w"
     elif jarak_hari <= 90:
         return "m"
-    return None  # terlalu jauh di masa lalu — timelimit DDGS tidak relevan lagi
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -135,23 +120,7 @@ def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
 def dalam_rentang_tanggal(tanggal_artikel: str, mulai: str, selesai: str) -> tuple[bool, bool]:
     """
     Cek apakah tanggal artikel ada dalam rentang [mulai, selesai].
-
-    Return (lolos, tanggal_pasti):
-    - lolos        : True jika artikel boleh diteruskan ke tahap berikutnya.
-    - tanggal_pasti: True jika tanggal berhasil diparsing & benar-benar
-                     tervalidasi terhadap rentang; False jika tanggal kosong
-                     atau gagal diparsing (BELUM TENTU benar berada dalam
-                     rentang — cuma belum bisa dipastikan salah/benar).
-
-    PERBAIKAN atas bug fail-open lama: item dengan tanggal_pasti=False di sini
-    MASIH diteruskan (bukan langsung fail-closed penuh), supaya sumber yang
-    memang tidak menyediakan tanggal sama sekali (mis. DuckDuckGo Web) tidak
-    otomatis ke-drop total dan jadi useless. TAPI flag `tanggal_pasti=False`
-    ini WAJIB dipakai di tahap berikutnya (lihat radar/fetcher.py) untuk
-    memvalidasi ULANG begitu tanggal publikasi asli berhasil ditemukan dari
-    hasil scraping — sebagai lapis pertahanan kedua, supaya artikel yang
-    sebenarnya di luar rentang tanggal tetap akhirnya dibuang, bukan lolos
-    diam-diam sampai ke tahap ekstraksi AI.
+    Return (lolos, tanggal_pasti) — lihat penjelasan lengkap di riwayat FIX #1.
     """
     if not tanggal_artikel or len(tanggal_artikel) < 10:
         return True, False
@@ -237,6 +206,80 @@ def _buang_homepage(list_artikel: list[dict], callback_log=None) -> list[dict]:
     return hasil
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# FIX #3 — Filter ringan (non-AI) untuk membuang noise SEBELUM tahap scraping
+# ═══════════════════════════════════════════════════════════════════════════
+# Kata fungsi umum yang HAMPIR SELALU muncul di judul berita Bahasa Indonesia
+_KATA_FUNGSI_ID = {
+    "dan", "di", "ke", "dari", "yang", "untuk", "dengan", "ini", "itu", "akan",
+    "pada", "tidak", "adalah", "juga", "atau", "karena", "dalam", "oleh",
+    "telah", "sudah", "masih", "bisa", "dapat", "warga", "daerah", "kota",
+    "desa", "kabupaten", "provinsi", "menteri", "pemerintah", "harga", "naik",
+    "turun", "persen", "juta", "ribu", "hingga", "usai", "saat", "kini",
+}
+# Kata fungsi umum Bahasa Inggris — kalau judul DIDOMINASI kata-kata ini,
+# kemungkinan besar berasal dari situs asing/berbahasa Inggris yang cuma
+# kebetulan cocok dengan keyword umum kita (mis. "kota" ~ Kota Rajasthan India,
+# "hama" ~ Hamas, "jawa" ~ Java/Jawa motorcycle, "padi" ~ PADI diving cert,
+# "ubi" ~ ticker saham UBI di Barrons).
+_KATA_FUNGSI_EN = {
+    "the", "and", "for", "with", "this", "that", "will", "from", "are", "was",
+    "were", "has", "have", "had", "not", "but", "you", "your", "best", "how",
+    "what", "when", "where", "is", "it", "of", "in", "to", "as", "be", "by",
+    "at", "an", "its", "they", "their", "more", "most", "than", "then",
+    "into", "out", "up", "down", "over", "under", "about", "after", "before",
+    "being", "been", "do", "does", "did", "can", "could", "would", "should",
+    "must", "we", "our", "us", "he", "she", "his", "her", "if", "so", "no",
+    "yes", "all", "some", "any", "each", "every", "other", "such", "only",
+    "own", "same", "now", "here", "there", "who", "which", "watch", "price",
+    "review", "guide", "top", "news", "today", "never", "truly", "looked",
+    "years", "celebrates",
+}
+
+
+def _kemungkinan_berita_indonesia(judul: str) -> bool:
+    """
+    Heuristik cepat (BUKAN AI, tanpa panggilan API) untuk menebak apakah judul
+    kemungkinan berita berbahasa Indonesia, berdasarkan rasio kata fungsi
+    ID vs EN.
+
+    FIX #3: mengurangi noise ekstrem yang terlihat di log (jam tangan Seiko,
+    motor Jawa India, kode pos Kota Rajasthan, saham ticker UBI, dsb) SEBELUM
+    tahap scraping+AI screening yang mahal — bukan menggantikan AI screening,
+    cuma buang kasus yang JELAS sekali salah bahasa/negara.
+
+    Fail-open: kalau tidak ada sinyal kuat ke arah manapun (skor EN rendah
+    atau seri dengan skor ID), tetap diloloskan — supaya artikel valid dengan
+    judul pendek/nama proper noun (mis. "Bulog Tulungagung Gelontorkan
+    Ratusan Ton Beras SPHP") tidak ikut kebuang.
+    """
+    kata = re.findall(r"[a-zA-Z]+", judul.lower())
+    if not kata:
+        return True
+
+    skor_id = sum(1 for k in kata if k in _KATA_FUNGSI_ID)
+    skor_en = sum(1 for k in kata if k in _KATA_FUNGSI_EN)
+
+    # Hanya tolak kalau sinyal bahasa Inggris JELAS dominan (bukan cuma seri)
+    if skor_en >= 2 and skor_en > skor_id:
+        return False
+    return True
+
+
+def _buang_bukan_bahasa_indonesia(list_artikel: list[dict], callback_log=None) -> list[dict]:
+    """Buang hasil pencarian yang judulnya kemungkinan besar bukan Bahasa Indonesia."""
+    hasil = []
+    for item in list_artikel:
+        judul = item.get("judul", "")
+        if _kemungkinan_berita_indonesia(judul):
+            hasil.append(item)
+        else:
+            pesan = f"      [Filter] Buang (kemungkinan bukan berita Indonesia): {judul[:60]}"
+            print(pesan)
+            if callback_log: callback_log(pesan)
+    return hasil
+
+
 # ─── SUMBER 1: DUCKDUCKGO NEWS ─────────────────────────────────────────────────
 def cari_duckduckgo_news(
     keywords: list[str],
@@ -247,9 +290,6 @@ def cari_duckduckgo_news(
 ) -> list[dict]:
     """Sumber 1: DuckDuckGo News. Gratis unlimited."""
     hasil = []
-
-    # FIX #1a: timelimit dihitung dari jarak tanggal_selesai ke HARI INI,
-    # bukan dari lebar rentang tanggal_mulai-tanggal_selesai.
     timelimit = _hitung_timelimit_ddgs(tanggal_selesai)
 
     try:
@@ -260,7 +300,10 @@ def cari_duckduckgo_news(
                 if callback_log: callback_log(pesan_log)
 
                 try:
-                    ddgs_kwargs = dict(max_results=max_per_keyword)
+                    ddgs_kwargs = dict(
+                        max_results=max_per_keyword,
+                        region="id-id",   # FIX #3: batasi hasil ke region Indonesia
+                    )
                     if timelimit:
                         ddgs_kwargs["timelimit"] = timelimit
                     berita = list(ddgs.news(keyword, **ddgs_kwargs))
@@ -274,7 +317,7 @@ def cari_duckduckgo_news(
                                 "url":           url,
                                 "judul":         item.get("title", ""),
                                 "tanggal":       tgl,
-                                "tanggal_pasti": tanggal_pasti,   # FIX: flag baru
+                                "tanggal_pasti": tanggal_pasti,
                                 "sumber":        item.get("source", ""),
                                 "sumber_search": "DuckDuckGo News"
                             })
@@ -302,7 +345,7 @@ def cari_google_news_rss(
 ) -> list[dict]:
     """
     Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED.
-    Resolve redirect URL Google ke URL artikel asli.
+    Sudah punya region ID sejak awal (&hl=id&gl=ID&ceid=ID:id) — tidak berubah.
     """
     hasil = []
     headers = {
@@ -348,7 +391,7 @@ def cari_google_news_rss(
                         "url":           url,
                         "judul":         judul,
                         "tanggal":       tgl,
-                        "tanggal_pasti": tanggal_pasti,   # FIX: flag baru
+                        "tanggal_pasti": tanggal_pasti,
                         "sumber":        entry.get("source", {}).get("title", ""),
                         "sumber_search": "Google News RSS"
                     })
@@ -384,7 +427,11 @@ def cari_duckduckgo_web(
                 if callback_log: callback_log(pesan_log)
 
                 try:
-                    web_results = list(ddgs.text(keyword_tahun, max_results=max_per_keyword))
+                    web_results = list(ddgs.text(
+                        keyword_tahun,
+                        max_results=max_per_keyword,
+                        region="id-id",   # FIX #3: batasi hasil ke region Indonesia
+                    ))
                     for item in web_results:
                         url = _normalisasi_url(item.get("href", ""))
                         if url:
@@ -392,7 +439,7 @@ def cari_duckduckgo_web(
                                 "url":           url,
                                 "judul":         item.get("title", ""),
                                 "tanggal":       "",
-                                "tanggal_pasti": False,  # FIX: eksplisit — sumber ini memang tidak punya tanggal
+                                "tanggal_pasti": False,
                                 "sumber":        "",
                                 "sumber_search": "DuckDuckGo Web"
                             })
@@ -437,6 +484,8 @@ def cari_berita_multi_sumber(
     gabungan = _deduplikasi(hasil_ddg + hasil_rss)
     gabungan = _deduplikasi_judul(gabungan)
     gabungan = _buang_homepage(gabungan, callback_log=callback_log)
+    # FIX #3: filter ringan non-AI, buang noise bahasa asing SEBELUM scraping
+    gabungan = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
 
     if len(gabungan) < 5:
         pesan_fallback = f"⚠️ Gabungan DDG+RSS hanya {len(gabungan)} → aktifkan DDG Web..."
@@ -448,8 +497,10 @@ def cari_berita_multi_sumber(
         gabungan  = _deduplikasi(gabungan + hasil_web)
         gabungan  = _deduplikasi_judul(gabungan)
         gabungan  = _buang_homepage(gabungan, callback_log=callback_log)
+        # FIX #3: terapkan filter yang sama di jalur fallback DDG Web
+        gabungan  = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
 
-    pesan_akhir = f"📦 Total unik artikel (filter URL, Judul Mirip & Homepage): {len(gabungan)}"
+    pesan_akhir = f"📦 Total unik artikel (filter URL, Judul Mirip, Homepage & Bahasa): {len(gabungan)}"
     print(f"\n   {pesan_akhir}")
     if callback_log: callback_log(pesan_akhir)
 

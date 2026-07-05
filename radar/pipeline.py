@@ -274,6 +274,8 @@ def batch_scan_semua_kategori(
     tanggal_selesai: str,
     min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
+    scan_semua_level: bool = False,
+    target_minimal: int = 3,
     callback_progress=None
 ) -> dict:
     """
@@ -298,7 +300,9 @@ def batch_scan_semua_kategori(
             min_skor,
             aktifkan_fallback=True,
             paksa_proses_ulang=paksa_proses_ulang,
-            callback_log=None,  # Batch scan: log per-step tidak dikirim ke UI
+            scan_semua_level=scan_semua_level,
+            target_minimal=target_minimal,
+            callback_log=None,
         )
         hasil_per_kategori[kategori] = hasil
 

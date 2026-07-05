@@ -579,15 +579,14 @@ with tab1:
                 if pilihan_kategori == "✨ SEMUA KATEGORI (BATCH SCAN)":
                     prog   = st.progress(0)
                     status = st.empty()
-
                     def cb_progress(kat, idx, total):
                         prog.progress(idx / total)
                         status.info(f"🔄 [{idx}/{total}] Memindai: **{kat}**...")
-
                     with st.spinner("Memulai Batch Scan — mohon tunggu, Anda bisa minum kopi dulu ☕..."):
                         hasil_batch = batch_scan_semua_kategori(
                             DAFTAR_KATEGORI, mulai_str, selesai_str,
                             min_skor=min_skor, paksa_proses_ulang=paksa_ulang,
+                            scan_semua_level=scan_semua,
                             callback_progress=cb_progress
                         )
                     prog.empty(); status.empty()
