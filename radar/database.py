@@ -10,21 +10,16 @@ import os
 from datetime import datetime
 
 from .config import DEFAULT_MIN_SKOR
+from .logger_config import get_logger
 
-# Path database — selalu di root folder proyek
+logger = get_logger(__name__)
+
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sifeno_tracker.db")
 
 
 def get_connection() -> sqlite3.Connection:
     """
     Membuat koneksi ke database SQLite.
-
-    - `timeout=30`: Python akan menunggu hingga 30 detik jika DB terkunci oleh
-      proses lain, sebelum akhirnya melempar error — bukan langsung gagal.
-    - `PRAGMA journal_mode=WAL`: mode Write-Ahead Logging memungkinkan operasi
-      baca (SELECT) berjalan bersamaan dengan operasi tulis (INSERT/UPDATE)
-      tanpa saling memblokir, jauh lebih ramah untuk skenario multi-sesi
-      Streamlit dibanding mode default (rollback journal).
     """
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -93,16 +88,12 @@ def inisialisasi_database():
 
     conn.commit()
     conn.close()
-    print("✅ [Database] Inisialisasi selesai.")
+    # FIX #16: dipanggil sangat sering (tiap scan_kategori) -> DEBUG
+    logger.debug("[Database] Inisialisasi selesai.")
 
-
-# ─── FUNGSI ARTIKEL ────────────────────────────────────────────────────────────
 
 def cek_url_sudah_ada(url: str) -> dict | None:
-    """
-    Cek apakah URL sudah pernah masuk database.
-    Return: dict info artikel jika ada, None jika belum.
-    """
+    """Cek apakah URL sudah pernah masuk database."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM riwayat_artikel WHERE url_berita = ?", (url,))
@@ -123,10 +114,7 @@ def simpan_artikel(
     relevan_kategori: bool,
     layak_ekstrak: bool
 ):
-    """
-    Menyimpan artikel baru ke database.
-    Jika URL sudah ada (diproses ulang), datanya akan di-OVERWRITE dengan hasil AI terbaru.
-    """
+    """Menyimpan artikel baru ke database."""
     conn = get_connection()
     cursor = conn.cursor()
     status = "ditemukan" if layak_ekstrak else "tidak_lolos"
@@ -190,11 +178,7 @@ def ambil_artikel_valid(
     triwulan: str,
     min_skor: int = DEFAULT_MIN_SKOR,
 ) -> list[dict]:
-    """
-    Ambil semua artikel yang lolos seleksi untuk kategori & triwulan tertentu.
-    Hanya yang status = 'ditemukan' (belum diekstrak, belum ditolak) DAN
-    skor_relevansi >= min_skor.
-    """
+    """Ambil semua artikel yang lolos seleksi untuk kategori & triwulan tertentu."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -211,11 +195,7 @@ def ambil_artikel_valid(
 
 
 def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tuple[list[str], list[dict]]:
-    """
-    Memisahkan URL menjadi dua kelompok:
-    - url_baru: lolos untuk di-scrape (baru, atau dipaksa ulang)
-    - daftar_warning: peringatan artikel sudah diekstrak
-    """
+    """Memisahkan URL menjadi kelompok baru vs sudah pernah ditemukan/diekstrak."""
     url_baru = []
     daftar_warning = []
 
@@ -241,15 +221,13 @@ def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tu
 
         elif info["status"] in ["ditolak_user", "tidak_lolos"]:
             if paksa_proses_ulang:
-                print(f"   🔄 Memproses ulang URL yang pernah gagal/ditolak: {url}")
+                logger.info(f"Memproses ulang URL yang pernah gagal/ditolak: {url}")
                 url_baru.append(url)
             else:
                 pass
 
     return url_baru, daftar_warning
 
-
-# ─── FUNGSI STATUS KATEGORI ────────────────────────────────────────────────────
 
 def update_status_kategori(kategori: str, triwulan: str, jumlah_valid: int):
     """Update atau insert status kategori setelah scan selesai."""
@@ -271,7 +249,7 @@ def update_status_kategori(kategori: str, triwulan: str, jumlah_valid: int):
 
 
 def ambil_semua_status_kategori(triwulan: str) -> list[dict]:
-    """Ambil ringkasan status semua kategori untuk satu triwulan (untuk Batch Dashboard)."""
+    """Ambil ringkasan status semua kategori untuk satu triwulan."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -284,14 +262,8 @@ def ambil_semua_status_kategori(triwulan: str) -> list[dict]:
     return hasil
 
 
-# ─── FUNGSI HASIL EKSTRAKSI (BARU) ────────────────────────────────────────────
-
 def simpan_hasil_ekstraksi(url: str, json_final: dict):
-    """
-    Simpan 12 variabel hasil ekstraksi ke tabel hasil_ekstraksi.
-    Dipanggil saat user menekan 'Finalisasi' di Tab 2.
-    Jika URL sudah ada, data akan di-overwrite (UPSERT).
-    """
+    """Simpan 12 variabel hasil ekstraksi ke tabel hasil_ekstraksi."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -336,6 +308,6 @@ def simpan_hasil_ekstraksi(url: str, json_final: dict):
         ))
         conn.commit()
     except Exception as e:
-        print(f"⚠️ [DB] Gagal simpan hasil ekstraksi untuk {url[:50]}: {e}")
+        logger.error(f"[DB] Gagal simpan hasil ekstraksi untuk {url[:50]}: {e}")
     finally:
         conn.close()

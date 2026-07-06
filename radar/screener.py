@@ -12,15 +12,16 @@ from google import genai as google_genai
 from google.genai import types as google_types
 
 from .config import DEFAULT_MIN_SKOR
-from .model_stack import AI_MODEL_CATALOG as SCREENER_STACK, MAX_TOKENS_SCREENING
+from .model_stack import (
+    AI_MODEL_CATALOG as SCREENER_STACK,
+    MAX_TOKENS_SCREENING,
+    format_model_404_message,   # FIX #17
+)
+from .logger_config import get_logger
+
+logger = get_logger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FIX #11 — Referensi eksplisit wilayah Jawa Tengah untuk validasi geografi
-# ═══════════════════════════════════════════════════════════════════════════
-# 35 Kabupaten/Kota resmi Provinsi Jawa Tengah (29 kabupaten + 6 kota).
-# Dipakai sebagai (a) ground-truth di prompt AI, dan (b) validasi programatik
-# non-AI sebagai lapis kedua.
 DAFTAR_KABKOTA_JATENG = [
     "cilacap", "banyumas", "purbalingga", "banjarnegara", "kebumen", "purworejo",
     "wonosobo", "magelang", "boyolali", "klaten", "sukoharjo", "wonogiri",
@@ -29,9 +30,6 @@ DAFTAR_KABKOTA_JATENG = [
     "pekalongan", "pemalang", "tegal", "brebes", "surakarta", "solo", "salatiga",
 ]
 
-# Kabupaten/kota dari provinsi LAIN yang namanya rawan tertukar/rancu dengan
-# konteks pencarian generik kita (mis. "panen padi", "harga beras") padahal
-# BUKAN Jawa Tengah. Dipakai untuk mendeteksi kasus false-positive
 DAFTAR_KABKOTA_RAWAN_TERTUKAR_BUKAN_JATENG = [
     "tulungagung", "kediri", "blitar", "jombang", "ngawi", "madiun", "ponorogo",
     "nganjuk", "trenggalek", "pacitan", "magetan", "bojonegoro", "tuban",
@@ -42,18 +40,9 @@ DAFTAR_KABKOTA_RAWAN_TERTUKAR_BUKAN_JATENG = [
 
 
 def _validasi_wilayah_programatik(judul: str, teks: str, wilayah: str) -> bool | None:
-    """
-    Lapis kedua (non-AI) untuk validasi wilayah, khusus level Jawa Tengah..
-
-    Return:
-        True  -> terdeteksi menyebut kab/kota Jateng resmi (mendukung wilayah_valid)
-        False -> terdeteksi menyebut kab/kota provinsi lain yang rawan tertukar,
-                 TANPA disertai penyebutan Jateng/Jawa Tengah/Magelang -> AI
-                 kemungkinan salah, override jadi tidak valid
-        None  -> tidak ada sinyal kuat ke arah manapun, serahkan ke keputusan AI
-    """
+    """Lapis kedua (non-AI) untuk validasi wilayah, khusus level Jawa Tengah."""
     if "jawa tengah" not in wilayah.lower() and "jateng" not in wilayah.lower():
-        return None  # cek ini hanya relevan untuk level Provinsi Jawa Tengah
+        return None
 
     gabungan = f"{judul} {teks}".lower()
 
@@ -84,7 +73,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
         if not pool_keys:
             continue
 
-        # FIX #12: max_tokens per provider dari 1 sumber kebenaran bersama
         max_tokens = MAX_TOKENS_SCREENING.get(provider, 2000)
 
         random.shuffle(pool_keys)
@@ -166,7 +154,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                             {"role": "user",   "content": prompt}
                         ],
                         temperature=0.1,
-                        max_tokens=max_tokens,   # FIX #12: dulu hardcode 600, sekarang 2000 (konsisten dgn provider lain)
+                        max_tokens=max_tokens,
                         response_format={"type": "json_object"}
                     )
                     teks = resp.choices[0].message.content
@@ -181,17 +169,20 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     "too many requests", "resource_exhausted"
                 ])
                 if is_limit:
-                    print(f"         ⚠️ {cfg['nama']} [Kunci {idx+1}] Limit! Coba kunci cadangan...")
+                    logger.warning(f"{cfg['nama']} [Kunci {idx+1}] Limit! Coba kunci cadangan...")
                     time.sleep(1)
                     continue
                 elif "503" in err or "unavailable" in err:
-                    print(f"         ⚠️ {cfg['nama']} Server sibuk (503). Pindah ke model berikutnya...")
+                    logger.warning(f"{cfg['nama']} Server sibuk (503). Pindah ke model berikutnya...")
                     break
                 elif "404" in err or "not found" in err or "does not exist" in err:
-                    print(f"         ⚠️ {cfg['nama']} Model 404! Pindah ke model berikutnya...")
+                    # FIX #17: log level ERROR (bukan cuma print/warning biasa)
+                    # supaya menonjol di dashboard "Logs" dan developer sadar
+                    # model_id ini perlu diperbarui.
+                    logger.error(format_model_404_message(cfg["nama"], model_id, "AI screening"))
                     break
                 else:
-                    print(f"         ⚠️ {cfg['nama']} Error: {str(e)[:80]}")
+                    logger.warning(f"{cfg['nama']} Error: {str(e)[:80]}")
                     break
     raise Exception("Semua model dan puluhan API Key error atau habis kuota. Coba lagi besok.")
 
@@ -205,24 +196,9 @@ def screening_satu_artikel(
 ) -> dict:
     """
     Screening artikel untuk BPS Kota Magelang.
-
-    ATURAN GEOGRAFI YANG BENAR:
-    ✅ LOLOS: Artikel menyebut Kota Magelang secara eksplisit
-    ✅ LOLOS: Artikel dari wilayah Kabupaten Magelang/sekitarnya YANG JUGA menyebut/berkaitan
-              langsung dengan Kota Magelang (fokus tetap Kota Magelang, bukan sekadar sama-sama
-              "Magelang")
-    ✅ LOLOS: Artikel Jawa Tengah (provinsi Kota Magelang berada)
-    ✅ LOLOS: Artikel NASIONAL dari Kementerian/Badan/Pemerintah Pusat
-              yang dampaknya ke SELURUH Indonesia (otomatis termasuk Kota Magelang)
-    ❌ TOLAK: Artikel murni Kabupaten Magelang (topik administratif/lokal Kabupaten semata)
-              yang TIDAK menyebut dan TIDAK jelas berkaitan dengan Kota Magelang
-    ❌ TOLAK: Artikel dari provinsi LAIN (Jatim, Bali, Sumsel, Kalsel, dll)
-              yang tidak menyebut Magelang/Jawa Tengah sama sekali
-    ❌ TOLAK: Artikel opini/berita tanpa data angka apapun
     """
     teks_pendek = artikel.get("teks", "")[:4000]
     judul       = artikel.get("judul", "")
-    # FIX #6: prioritaskan "url" (bersih dari scraper.py) di atas "url_asli"
     url         = artikel.get("url", artikel.get("url_asli", ""))
 
     wilayah_lower = wilayah.lower()
@@ -237,7 +213,6 @@ def screening_satu_artikel(
     else:
         level_info = "Level 5 - NASIONAL/INDONESIA (fallback terakhir)"
 
-    # FIX #11: daftar 35 kab/kota Jateng resmi disisipkan sebagai ground-truth
     daftar_jateng_str = ", ".join(k.title() for k in DAFTAR_KABKOTA_JATENG)
 
     prompt = f"""
@@ -342,14 +317,11 @@ def screening_satu_artikel(
         hasil["teks"]            = artikel.get("teks", "")
         hasil["_model_screener"] = model_terpakai
 
-        # ═══════════════════════════════════════════════════════════════════
-        # FIX #11 — Lapis kedua non-AI: override wilayah_valid kalau AI keliru
-        # ═══════════════════════════════════════════════════════════════════
         validasi_programatik = _validasi_wilayah_programatik(judul, artikel.get("teks", ""), wilayah)
         if validasi_programatik is False and hasil.get("wilayah_valid") is True:
-            print(
-                f"      ⚠️ [Validasi Geografi] AI bilang wilayah_valid=True tapi artikel menyebut "
-                f"kab/kota di luar Jateng tanpa konteks Jateng/Magelang. Override jadi False."
+            logger.warning(
+                f"[Validasi Geografi] AI bilang wilayah_valid=True untuk '{judul[:50]}' tapi "
+                f"artikel menyebut kab/kota di luar Jateng tanpa konteks Jateng/Magelang. Override jadi False."
             )
             hasil["wilayah_valid"] = False
             hasil["layak_ekstrak"] = False
@@ -361,7 +333,7 @@ def screening_satu_artikel(
 
         return hasil
     except Exception as e:
-        print(f"      ⚠️ Screening Gagal Total untuk {url[:50]}: {e}")
+        logger.error(f"Screening Gagal Total untuk {url[:50]}: {e}")
         return {
             "url": url, "judul": judul, "teks": artikel.get("teks", ""),
             "skor_relevansi": 0, "alasan_singkat": f"Error AI: {str(e)[:60]}",
@@ -379,26 +351,18 @@ def screening_batch(
     min_skor: int = DEFAULT_MIN_SKOR,
     jeda_detik: float = 1.0,
     max_artikel: int = 15,
-    target_minimal: int | None = None,   # FIX #10: opsional, aktifkan batch lanjutan
-    callback_log=None,                   # FIX #10: teruskan log ke UI, bukan cuma print
+    target_minimal: int | None = None,
+    callback_log=None,
 ) -> tuple[list[dict], list[dict]]:
     """
-    FIX #10: dulu artikel yang melebihi `max_artikel` (default 15) langsung
-    dibuang tanpa pernah dinilai AI sama sekali — tanpa notifikasi jelas ke
-    user. Sekarang:
-    1. Log eksplisit berapa artikel yang TIDAK dinilai pada batch pertama.
-    2. Jika target_minimal diberikan dan hasil batch pertama masih kurang,
-       lanjutkan screening batch KEDUA (dibatasi hanya 1 putaran tambahan,
-       supaya waktu eksekusi tetap terkendali — lihat juga fix #3) dari sisa
-       artikel yang belum dinilai.
-    3. Log eksplisit lagi kalau masih ada sisa yang benar-benar tidak sempat
-       dinilai setelah 2 putaran.
+    Screening batch artikel, dengan mekanisme batch lanjutan jika hasil
+    belum mencapai target_minimal (FIX #10).
     """
     if not list_artikel:
         return [], []
 
-    def _log(pesan: str):
-        print(pesan)
+    def _log(pesan: str, level: str = "info"):
+        getattr(logger, level)(pesan)
         if callback_log:
             callback_log(pesan)
 
@@ -435,22 +399,30 @@ def screening_batch(
         )
         lolos_batch, gagal_batch = [], []
         for i, artikel in enumerate(batch, 1):
-            _log(f"      [{i}/{len(batch)}] Menilai: {artikel.get('judul', '')[:55]}...")
+            # FIX #16: pesan per-artikel sangat verbose -> DEBUG di console,
+            # tapi TETAP dikirim ke callback_log untuk ditampilkan di UI Streamlit.
+            pesan_item = f"      [{i}/{len(batch)}] Menilai: {artikel.get('judul', '')[:55]}..."
+            logger.debug(pesan_item)
+            if callback_log: callback_log(pesan_item)
+
             hasil = screening_satu_artikel(api_keys, artikel, nama_kategori, wilayah, min_skor=min_skor)
             skor  = hasil.get("skor_relevansi", 0)
             layak = hasil.get("layak_ekstrak", False)
             wilayah_valid = hasil.get("wilayah_valid", False)
             if skor >= min_skor and layak:
                 badge = "🟢" if skor >= 8 else "🟡"
-                _log(f"         {badge} LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}")
+                pesan_hasil = f"         {badge} LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}"
+                logger.debug(pesan_hasil)
+                if callback_log: callback_log(pesan_hasil)
                 lolos_batch.append(hasil)
             else:
-                _log(f"         🔴 TIDAK LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}")
+                pesan_hasil = f"         🔴 TIDAK LOLOS — Skor {skor}/10 | Wilayah valid: {wilayah_valid} | by {hasil.get('_model_screener', 'AI')}"
+                logger.debug(pesan_hasil)
+                if callback_log: callback_log(pesan_hasil)
                 gagal_batch.append(hasil)
             time.sleep(jeda_detik)
         return lolos_batch, gagal_batch
 
-    # ── Batch pertama ──
     batch_pertama = list_artikel_sorted[:max_artikel]
     sisa_belum_dinilai = list_artikel_sorted[max_artikel:]
 
@@ -458,12 +430,12 @@ def screening_batch(
         _log(
             f"   ⚠️ {total_tersedia} artikel tersedia, dibatasi {max_artikel} untuk batch "
             f"pertama (prioritas: Magelang > Jateng > Nasional). {len(sisa_belum_dinilai)} "
-            f"artikel BELUM dinilai sama sekali pada tahap ini."
+            f"artikel BELUM dinilai sama sekali pada tahap ini.",
+            level="warning",
         )
 
     lolos, gagal = _screening_satu_batch(batch_pertama, nomor_batch=1)
 
-    # ── FIX #10: batch lanjutan (maksimal 1 putaran tambahan) ──
     if target_minimal is not None and len(lolos) < target_minimal and sisa_belum_dinilai:
         batch_kedua = sisa_belum_dinilai[:max_artikel]
         sisa_setelah_batch_kedua = sisa_belum_dinilai[max_artikel:]
@@ -478,7 +450,8 @@ def screening_batch(
         if sisa_setelah_batch_kedua:
             _log(
                 f"   ℹ️ Masih ada {len(sisa_setelah_batch_kedua)} artikel yang belum dinilai "
-                f"setelah 2 batch (dihentikan agar waktu eksekusi tetap wajar)."
+                f"setelah 2 batch (dihentikan agar waktu eksekusi tetap wajar).",
+                level="warning",
             )
     elif sisa_belum_dinilai:
         _log(

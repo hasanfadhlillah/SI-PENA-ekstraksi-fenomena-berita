@@ -17,6 +17,9 @@ from .screener       import screening_batch
 from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya,
                              buat_pesan_anti_buntu, siapkan_keyword_fallback)
 from .config         import DEFAULT_MIN_SKOR
+from .logger_config  import get_logger
+
+logger = get_logger(__name__)
 
 load_dotenv()
 
@@ -56,7 +59,7 @@ def _jalankan_pipeline_satu_level(
     triwulan: str,
     min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
-    target_minimal: int = 3,   # FIX #10: diteruskan ke screening_batch
+    target_minimal: int = 3,
     callback_log=None,
 ) -> list[dict]:
     """
@@ -66,14 +69,14 @@ def _jalankan_pipeline_satu_level(
     wilayah_nama = level_cfg["nama"]
     wilayah_key  = level_cfg["key"]
 
-    def _log(pesan: str):
-        print(pesan)
+    def _log(pesan: str, level: str = "info"):
+        getattr(logger, level)(pesan)
         if callback_log:
             callback_log(pesan)
 
-    print(f"\n{'='*55}")
-    print(f"  🌍 Level Wilayah: {wilayah_nama}")
-    print(f"{'='*55}")
+    logger.debug("=" * 55)
+    logger.info(f"🌍 Level Wilayah: {wilayah_nama}")
+    logger.debug("=" * 55)
 
     keyword_list = siapkan_keyword_fallback(level_cfg, keywords_dict)
 
@@ -86,7 +89,7 @@ def _jalankan_pipeline_satu_level(
         label_tampilan=wilayah_nama
     )
     if not hasil_search:
-        _log(f"⚠️ 0 artikel ditemukan di {wilayah_nama}")
+        _log(f"⚠️ 0 artikel ditemukan di {wilayah_nama}", level="warning")
         return []
 
     _log(f"📰 {len(hasil_search)} artikel dari search engine")
@@ -96,12 +99,12 @@ def _jalankan_pipeline_satu_level(
     url_baru, warnings = filter_url_baru(list_url, paksa_proses_ulang)
 
     if warnings:
-        print(f"\n  ⚠️ {len(warnings)} artikel sudah pernah diekstrak (akan dilewati):")
+        logger.info(f"{len(warnings)} artikel sudah pernah diekstrak (akan dilewati):")
         for w in warnings:
-            print(f"     • {w['judul'][:60]} → {w['pesan']}")
+            logger.debug(f"   • {w['judul'][:60]} → {w['pesan']}")
 
     if not url_baru:
-        _log("⚠️ Semua URL sudah ada di database — dilewati")
+        _log("⚠️ Semua URL sudah ada di database — dilewati", level="warning")
         return []
 
     _log(f"🔗 {len(url_baru)} URL baru akan diproses (dari {len(list_url)} total)")
@@ -115,7 +118,7 @@ def _jalankan_pipeline_satu_level(
         max_workers=5,
     )
     if not artikel_scraped:
-        _log("⚠️ Semua URL gagal di-scrape")
+        _log("⚠️ Semua URL gagal di-scrape", level="warning")
         return []
 
     _log(f"📄 {len(artikel_scraped)}/{len(url_baru)} artikel berhasil di-scrape")
@@ -127,8 +130,8 @@ def _jalankan_pipeline_satu_level(
         nama_kategori=nama_kategori,
         wilayah=wilayah_nama,
         min_skor=min_skor,
-        target_minimal=target_minimal,   # FIX #10
-        callback_log=callback_log,        # FIX #10
+        target_minimal=target_minimal,
+        callback_log=callback_log,
     )
 
     _log(f"✅ Screening selesai: {len(lolos)} lolos | {len(tidak_lolos)} tidak lolos")
@@ -166,16 +169,15 @@ def scan_kategori(
     """
     Fungsi utama RADAR untuk scan 1 kategori PDRB.
     """
-    print(f"\n{'#'*55}")
-    print(f"  🎯 SI-FENO RADAR — Scan Kategori")
-    print(f"  📂 {nama_kategori}")
-    print(f"  📅 {tanggal_mulai} s.d. {tanggal_selesai}")
+    logger.info("#" * 55)
+    logger.info(f"🎯 SI-PENA RADAR — Scan Kategori: {nama_kategori}")
+    logger.info(f"📅 {tanggal_mulai} s.d. {tanggal_selesai}")
     if paksa_proses_ulang:
-        print(f"  🔄 MODE: Paksa Proses Ulang Aktif!")
-    print(f"{'#'*55}")
+        logger.info("🔄 MODE: Paksa Proses Ulang Aktif!")
+    logger.info("#" * 55)
 
-    def _log(pesan: str):
-        print(pesan)
+    def _log(pesan: str, level: str = "info"):
+        getattr(logger, level)(pesan)
         if callback_log:
             callback_log(pesan)
 
@@ -198,7 +200,7 @@ def scan_kategori(
 
     for level_cfg in URUTAN_FALLBACK:
         level_sekarang = level_cfg["level"]
-        _log(f"\n🌍 [Level {level_sekarang}/{len(URUTAN_FALLBACK)}] Memindai: {level_cfg['nama']}...")
+        _log(f"🌍 [Level {level_sekarang}/{len(URUTAN_FALLBACK)}] Memindai: {level_cfg['nama']}...")
 
         lolos = _jalankan_pipeline_satu_level(
             nama_kategori=nama_kategori,
@@ -209,7 +211,7 @@ def scan_kategori(
             triwulan=triwulan,
             min_skor=min_skor,
             paksa_proses_ulang=paksa_proses_ulang,
-            target_minimal=target_minimal,   # FIX #10
+            target_minimal=target_minimal,
             callback_log=callback_log,
         )
 
@@ -267,19 +269,17 @@ def batch_scan_semua_kategori(
 ) -> dict:
     """
     Scan semua kategori PDRB secara berurutan.
-    Batch scan tidak menggunakan callback_log per-step (terlalu verbose).
-    Progress ditampilkan via callback_progress (per kategori).
     """
-    print(f"\n{'#'*55}")
-    print(f"  🚀 BATCH SCAN — {len(daftar_kategori)} kategori")
-    print(f"{'#'*55}")
+    logger.info("#" * 55)
+    logger.info(f"🚀 BATCH SCAN — {len(daftar_kategori)} kategori")
+    logger.info("#" * 55)
 
     hasil_per_kategori = {}
     ada_berita = []
     tidak_ada  = []
 
     for i, kategori in enumerate(daftar_kategori, 1):
-        print(f"\n[{i}/{len(daftar_kategori)}] ▶ {kategori}")
+        logger.info(f"[{i}/{len(daftar_kategori)}] ▶ {kategori}")
         hasil = scan_kategori(
             kategori,
             tanggal_mulai,

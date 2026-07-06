@@ -3,6 +3,10 @@ import requests
 from html.parser import HTMLParser
 import re
 
+from radar.logger_config import get_logger
+
+logger = get_logger(__name__)
+
 # ─── Detektor Cloudflare ───────────────────────────────────────────────────────
 CLOUDFLARE_TITLES = [
     "attention required", "just a moment",
@@ -46,7 +50,7 @@ def _html_ke_teks(html: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FIX #1c — Ekstraksi tanggal publikasi ASLI dari HTML (bukan hardcode string)
+# Ekstraksi tanggal publikasi ASLI dari HTML
 # ═══════════════════════════════════════════════════════════════════════════
 _BULAN_ID = {
     "januari": "01", "februari": "02", "maret": "03", "april": "04",
@@ -165,15 +169,11 @@ def _metode_direct(url: str) -> dict | None:
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FIX #4 — Ganti Google Cache (100% mati) dengan Wayback Machine (masih aktif)
-# ═══════════════════════════════════════════════════════════════════════════
 def _metode_wayback(url: str) -> dict | None:
     """
     Metode 3: Wayback Machine (archive.org) — PENGGANTI Google Cache.
     """
     try:
-        # Langkah 1: cek ketersediaan snapshot (cepat & ringan)
         avail_resp = requests.get(
             "https://archive.org/wayback/available",
             params={"url": url},
@@ -189,7 +189,6 @@ def _metode_wayback(url: str) -> dict | None:
         if not snapshot_url or not snapshot.get("available", False):
             return None
 
-        # Langkah 2: fetch HTML dari snapshot arsip
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -207,11 +206,8 @@ def _metode_wayback(url: str) -> dict | None:
         match = re.search(r'<title[^>]*>(.*?)</title>', html_mentah, re.IGNORECASE | re.DOTALL)
         if match:
             judul = match.group(1).strip()
-            # Wayback Machine kadang menambahkan info arsip di title, bersihkan
             judul = re.sub(r'\s*[\|\-–]\s*wayback machine\s*$', '', judul, flags=re.IGNORECASE).strip()
 
-        # Halaman snapshot Wayback biasanya masih menyimpan meta tag asli
-        # dari artikel sumbernya, jadi ekstraksi tanggal tetap bisa jalan
         tanggal_terbit = _ekstrak_tanggal_terbit(html_mentah)
 
         return {"judul": judul, "teks": teks, "tanggal_terbit": tanggal_terbit}
@@ -246,25 +242,24 @@ def scrape_berita(url: str) -> dict:
     """
     Scraper berlapis 3:
     Jina Reader → Direct Request → Wayback Machine
-
-    FIX #4: metode ke-3 diganti dari "Google Cache" (mati total) jadi
-    "Wayback Machine" (masih aktif) — lihat _metode_wayback() untuk detail.
     """
     clean_url = url.split('?')[0]
 
     metode_list = [
         ("Jina Reader API",   _metode_jina),
         ("Direct Request",    _metode_direct),
-        ("Wayback Machine",   _metode_wayback),   # FIX #4: ganti dari Google Cache
+        ("Wayback Machine",   _metode_wayback),
     ]
 
     for nama_metode, fungsi in metode_list:
-        print(f"   -> [Mencoba] {nama_metode}...")
+        # FIX #16: per-attempt log sangat verbose (dipanggil puluhan kali per
+        # kategori) -> level DEBUG, hanya terlihat kalau LOG_LEVEL=DEBUG.
+        logger.debug(f"[Mencoba] {nama_metode} untuk {clean_url[:60]}...")
 
         hasil = fungsi(clean_url)
 
         if hasil is None:
-            print(f"   -> [Gagal] {nama_metode}: Tidak ada respons.")
+            logger.debug(f"[Gagal] {nama_metode}: Tidak ada respons untuk {clean_url[:60]}...")
             continue
 
         judul          = hasil.get("judul", "")
@@ -272,17 +267,20 @@ def scrape_berita(url: str) -> dict:
         tanggal_terbit = hasil.get("tanggal_terbit", "")
 
         if _is_cloudflare_block(judul, teks):
-            print(f"   -> [Diblokir] {nama_metode}: Kena Cloudflare challenge.")
+            logger.debug(f"[Diblokir] {nama_metode}: Kena Cloudflare challenge di {clean_url[:60]}...")
             continue
 
         teks_bersih = bersihkan_teks_artikel(teks)
 
         if hitung_kata(teks_bersih) < 80:
-            print(f"   -> [Gagal] {nama_metode}: Teks terlalu sedikit kata ({hitung_kata(teks_bersih)} kata).")
+            logger.debug(
+                f"[Gagal] {nama_metode}: Teks terlalu sedikit kata "
+                f"({hitung_kata(teks_bersih)} kata) di {clean_url[:60]}..."
+            )
             continue
 
         # Sukses!
-        print(f"   -> [✅ Sukses] via {nama_metode}!")
+        logger.info(f"[Sukses] Scraping via {nama_metode}: {clean_url[:60]}...")
         return {
             "status":               "sukses",
             "metode":               nama_metode,
@@ -293,6 +291,7 @@ def scrape_berita(url: str) -> dict:
             "teks":                 teks_bersih,
         }
 
+    logger.warning(f"Semua metode scraping gagal untuk {clean_url[:60]}...")
     return {
         "status": "error",
         "pesan": (

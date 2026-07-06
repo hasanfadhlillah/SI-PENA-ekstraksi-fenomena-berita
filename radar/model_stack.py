@@ -83,3 +83,19 @@ MAX_TOKENS_SCREENING = {
     "cerebras": 2000,
     "mistral" : 2000,
 }
+
+# Pesan standar untuk model 404/Not Found, dipakai bersama
+def format_model_404_message(nama_model: str, model_id: str, konteks: str) -> str:
+    """
+    Bangun pesan standar saat sebuah model dalam katalog mengembalikan
+    404/Not Found. Dipakai bersama oleh ai_engine.py (ekstraksi 12 variabel)
+    dan radar/screener.py (AI screening) supaya pesannya KONSISTEN dan mudah
+    di-grep di log production (mis. cari kata kunci "MODEL TIDAK VALID").
+    """
+    return (
+        f"[MODEL TIDAK VALID] {nama_model} (model_id='{model_id}') mengembalikan "
+        f"404/Not Found saat {konteks}. Kemungkinan model_id sudah deprecated "
+        f"atau salah ketik — PERLU DIPERBARUI di radar/model_stack.py. Sistem "
+        f"otomatis melanjutkan ke model berikutnya di stack, tapi mohon segera "
+        f"cek & perbarui katalog model."
+    )

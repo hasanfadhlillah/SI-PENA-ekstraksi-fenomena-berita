@@ -13,9 +13,12 @@ from datetime import datetime
 from groq import Groq
 from dotenv import load_dotenv
 
+from .logger_config import get_logger
+
+logger = get_logger(__name__)
+
 load_dotenv()
 
-# ─── PATH FILE JSON KEYWORD DINAMIS ────────────────────────────────────────────
 _KEYWORDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "keywords.json")
 
 
@@ -28,10 +31,11 @@ def _load_keywords() -> dict:
         try:
             with open(_KEYWORDS_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                print(f"✅ [Keywords] Dimuat dari {_KEYWORDS_PATH}")
+                # FIX #16: dipanggil SANGAT sering (tiap scan kategori) -> DEBUG
+                logger.debug(f"[Keywords] Dimuat dari {_KEYWORDS_PATH}")
                 return data
         except Exception as e:
-            print(f"⚠️ [Keywords] Gagal baca keywords.json: {e}. Menggunakan dictionary kosong.")
+            logger.error(f"[Keywords] Gagal baca keywords.json: {e}. Menggunakan dictionary kosong.")
             return {}
     return {}
 
@@ -44,21 +48,15 @@ def _save_keywords(data: dict):
     try:
         with open(_KEYWORDS_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"✅ [Keywords] Disimpan ke {_KEYWORDS_PATH}")
+        logger.info(f"[Keywords] Disimpan ke {_KEYWORDS_PATH}")
     except Exception as e:
         raise IOError(f"Gagal menyimpan keywords: {e}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FIX #8 — Ganti hardcode tahun (mis. "2026") dengan tahun berjalan, dinamis
-# ═══════════════════════════════════════════════════════════════════════════
 _POLA_TAHUN = re.compile(r'\b20\d{2}\b')
 
 def _perbarui_tahun_keyword(keyword: str) -> str:
-    """
-    Ganti angka tahun berformat 20XX di dalam sebuah keyword dengan tahun
-    berjalan (datetime.now().year).
-    """
+    """Ganti angka tahun berformat 20XX di dalam sebuah keyword dengan tahun berjalan."""
     return _POLA_TAHUN.sub(str(datetime.now().year), keyword)
 
 
@@ -70,44 +68,37 @@ def _perbarui_tahun_keywords_dict(keywords: dict) -> dict:
     }
 
 
-# Load data keyword saat file ini dijalankan
 KEYWORD_DICT = _load_keywords()
 
 # ─── FUNGSI EXPANSION ─────────────────────────────────────────────────────────
 def expand_query_dari_dict(nama_kategori: str) -> dict | None:
     """
     Cari keyword dari dictionary (JSON atau bawaan).
-    Selalu baca fresh dari _load_keywords() agar perubahan Tab 5 langsung aktif.
     Return dict {magelang, jateng, nasional} atau None jika tidak ditemukan.
     """
     kw_dict = _load_keywords()
 
-    # Coba exact match dulu
     if nama_kategori in kw_dict:
-        # FIX #8: perbarui tahun secara dinamis sebelum dikembalikan
         return _perbarui_tahun_keywords_dict(kw_dict[nama_kategori])
 
-    # Coba partial match (case-insensitive)
     nama_lower = nama_kategori.lower()
     for key, val in kw_dict.items():
         if nama_lower in key.lower() or key.lower() in nama_lower:
-            return _perbarui_tahun_keywords_dict(val)   # FIX #8
+            return _perbarui_tahun_keywords_dict(val)
 
     return None
 
 def expand_query_via_ai(nama_kategori: str, api_keys: str) -> dict:
     """
     Fallback: generate keyword menggunakan AI jika tidak ada di dictionary.
-    Dipakai untuk kategori yang sangat spesifik atau tidak dikenal.
-    PERBAIKAN: Mendukung Multiple API Keys
     """
     first_key = api_keys.split(",")[0].strip() if api_keys else ""
     if not first_key:
-        print("   ⚠️ Groq API Key kosong, menggunakan keyword generik.")
+        logger.warning("Groq API Key kosong, menggunakan keyword generik.")
         return _bikin_keyword_generik(nama_kategori)
 
     client = Groq(api_key=first_key)
-    tahun_sekarang = datetime.now().year   # FIX #8: dinamis, bukan hardcode
+    tahun_sekarang = datetime.now().year
     prompt = f"""Kamu adalah asisten riset BPS (Badan Pusat Statistik) Indonesia.
 Tugasmu: ubah kategori PDRB berikut menjadi keyword pencarian berita jurnalistik.
 
@@ -136,18 +127,17 @@ ATURAN PENTING:
             response_format={"type": "json_object"}
         )
         hasil_ai = json.loads(resp.choices[0].message.content)
-        hasil_ai = _perbarui_tahun_keywords_dict(hasil_ai)   # FIX #8: jaring pengaman tambahan
+        hasil_ai = _perbarui_tahun_keywords_dict(hasil_ai)
 
-        # Auto-simpan ke keywords.json
         kw_data = _load_keywords()
         kw_data[nama_kategori] = hasil_ai
         _save_keywords(kw_data)
-        print(f"   💾 Hasil AI untuk '{nama_kategori}' berhasil disimpan ke keywords.json")
+        logger.info(f"Hasil AI untuk '{nama_kategori}' berhasil disimpan ke keywords.json")
 
         return hasil_ai
 
     except Exception as e:
-        print(f"   ⚠️ AI Query Expansion gagal: {e}. Pakai keyword generik.")
+        logger.warning(f"AI Query Expansion gagal: {e}. Pakai keyword generik.")
         return _bikin_keyword_generik(nama_kategori)
 
 
@@ -155,7 +145,7 @@ ATURAN PENTING:
 def _bikin_keyword_generik(nama_kategori: str) -> dict:
     """Fungsi pembantu untuk membuat keyword darurat jika AI gagal."""
     kata = nama_kategori.lower().replace(",", "").replace("dan", "").strip()
-    tahun_sekarang = datetime.now().year   # FIX #8: dinamis, bukan hardcode 2026
+    tahun_sekarang = datetime.now().year
     return {
         "magelang": [f"{kata} kota magelang", f"kondisi {kata} kota magelang"],
         "jateng":   [f"{kata} jawa tengah", f"{kata} jateng"],
@@ -167,12 +157,11 @@ def dapatkan_keywords(nama_kategori: str, api_key: str) -> dict:
     """
     Fungsi utama Modul A.
     Coba dict dulu, fallback ke AI jika tidak ditemukan.
-    Return: {"magelang": [...], "jateng": [...], "nasional": [...]}
     """
     hasil = expand_query_dari_dict(nama_kategori)
     if hasil:
-        print(f"   ✅ Keyword dari dictionary ({len(hasil['magelang'])} keyword level Kota)")
+        logger.debug(f"Keyword dari dictionary ({len(hasil['magelang'])} keyword level Kota)")
         return hasil
 
-    print(f"   ⚠️ Tidak ada di dictionary, generate via AI...")
+    logger.info(f"Kategori '{nama_kategori}' tidak ada di dictionary, generate via AI...")
     return expand_query_via_ai(nama_kategori, api_key)

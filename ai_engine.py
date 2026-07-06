@@ -6,12 +6,18 @@ from groq import Groq
 from google import genai as google_genai
 from google.genai import types as google_types
 
-from radar.model_stack import AI_MODEL_CATALOG as MODEL_STACK, MAX_TOKENS_EKSTRAKSI
+from radar.model_stack import (
+    AI_MODEL_CATALOG as MODEL_STACK,
+    MAX_TOKENS_EKSTRAKSI,
+    format_model_404_message,   # FIX #17
+)
+from radar.logger_config import get_logger
+
+logger = get_logger(__name__)
 
 # ─── Buat Prompt ────────────────────────────────────────────────────────────────
 def _buat_prompt(data_artikel: dict, max_chars: int) -> str:
     teks = data_artikel.get('teks', '')[:max_chars]
-    # FIX #6: prioritaskan "url" (bersih dari scraper.py) di atas "url_asli"
     url = data_artikel.get('url', data_artikel.get('url_asli', '-'))
     judul = data_artikel.get('judul', 'Judul Tidak Diketahui')
     tanggal = data_artikel.get('tanggal', 'Tanggal Tidak Diketahui')
@@ -61,14 +67,14 @@ def _call_groq(api_key: str, model_id: str, prompt: str, max_tokens: int) -> str
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=max_tokens,   # FIX #12: dari MAX_TOKENS_EKSTRAKSI (1 sumber kebenaran)
+        max_tokens=max_tokens,
         response_format={"type": "json_object"}
     )
     if "gpt-oss" in model_id:
         kwargs["reasoning_effort"] = "low"
     resp = client.chat.completions.create(**kwargs)
     u = resp.usage
-    print(f"   -> [Token] in:{u.prompt_tokens} out:{u.completion_tokens} total:{u.total_tokens}")
+    logger.debug(f"[Token] in:{u.prompt_tokens} out:{u.completion_tokens} total:{u.total_tokens}")
     return resp.choices[0].message.content
  
 # ─── Caller: Gemini ─────────────────────────────────────────────────────────────
@@ -81,7 +87,7 @@ def _call_gemini(api_key: str, model_id: str, prompt: str, thinking: str = "leve
     client = google_genai.Client(api_key=api_key)
     config_kwargs = dict(
         temperature=0.1,
-        max_output_tokens=max_output_tokens,   # FIX #12
+        max_output_tokens=max_output_tokens,
         response_mime_type="application/json",
     )
     if thinking == "level":
@@ -111,7 +117,7 @@ def _call_cerebras(api_key: str, model_id: str, prompt: str, max_tokens: int) ->
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=max_tokens,   # FIX #12
+        max_tokens=max_tokens,
         response_format={"type": "json_object"}
     )
     if "gpt-oss" in model_id:
@@ -135,7 +141,7 @@ def _call_mistral(api_key: str, model_id: str, prompt: str, max_tokens: int) -> 
             {"role": "user", "content": prompt}
         ],
         temperature=0.1,
-        max_tokens=max_tokens,   # FIX #12: dari MAX_TOKENS_EKSTRAKSI (tetap 3000, tidak berubah)
+        max_tokens=max_tokens,
         response_format={"type": "json_object"}
     )
     teks = resp.choices[0].message.content
@@ -154,12 +160,12 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
         pool_keys = [k.strip() for k in api_key_raw.split(",") if k.strip()]
  
         if not pool_keys:
-            print(f"   -> [Skip] {cfg['nama']}: API key kosong.")
+            logger.debug(f"[Skip] {cfg['nama']}: API key kosong.")
             continue
  
-        print(f"\n   -> [Mencoba] {cfg['nama']} (Ada {len(pool_keys)} Kunci Amunisi)...")
+        logger.debug(f"[Mencoba] {cfg['nama']} (Ada {len(pool_keys)} Kunci Amunisi)...")
         prompt = _buat_prompt(data_artikel, cfg["max_chars"])
-        max_tokens = MAX_TOKENS_EKSTRAKSI.get(provider, 3000)   # FIX #12
+        max_tokens = MAX_TOKENS_EKSTRAKSI.get(provider, 3000)
         
         random.shuffle(pool_keys)
  
@@ -180,11 +186,11 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
      
                 hasil = json.loads(teks_bersih)
                 hasil["_model_digunakan"] = cfg["nama"]
-                print(f"   -> [✅ Sukses] {cfg['nama']} (Memakai kunci ke-{idx+1})")
+                logger.info(f"[Sukses] {cfg['nama']} (Memakai kunci ke-{idx+1})")
                 return {"status": "sukses", "data": hasil}
      
             except json.JSONDecodeError as e:
-                print(f"   -> [Error JSON] {cfg['nama']}: {e}")
+                logger.error(f"[Error JSON] {cfg['nama']}: {e}")
                 break
      
             except Exception as e:
@@ -195,16 +201,20 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
                 is_not_found = "404" in err or "not found" in err
      
                 if is_rate_limit:
-                    print(f"   -> [⚠️ Limit] Kunci ke-{idx+1} habis! Coba Kunci Cadangan {provider}...")
+                    logger.warning(f"[Limit] Kunci ke-{idx+1} habis untuk {cfg['nama']}! Coba Kunci Cadangan {provider}...")
                     time.sleep(1)
                     continue
                 elif is_not_found:
-                    print(f"   -> [❌ Model 404] {cfg['nama']} → model tidak ditemukan, lewati.")
+                    # FIX #17: log level ERROR dengan pesan standar, supaya
+                    # kegagalan model tidak lagi "senyap" — langsung menonjol
+                    # di tab "Logs" Hugging Face Spaces.
+                    logger.error(format_model_404_message(cfg["nama"], cfg["model_id"], "ekstraksi 12 variabel"))
                     break
                 else:
-                    print(f"   -> [Error] {cfg['nama']}: {err[:120]}")
+                    logger.error(f"[Error] {cfg['nama']}: {err[:120]}")
                     break
  
+    logger.error("Seluruh model dan seluruh API Key error/limit saat ekstraksi. Tidak ada yang berhasil.")
     return {
         "status": "error",
         "pesan" : "Seluruh model dan seluruh 25 API Key error/limit. Coba lagi nanti!"

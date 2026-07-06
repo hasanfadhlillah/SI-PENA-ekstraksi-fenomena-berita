@@ -11,6 +11,10 @@ import feedparser
 from datetime import datetime
 from ddgs import DDGS
 
+from .logger_config import get_logger
+
+logger = get_logger(__name__)
+
 
 # ─── HELPER ────────────────────────────────────────────────────────────────────
 def _normalisasi_url(url: str) -> str:
@@ -24,12 +28,6 @@ def _normalisasi_url(url: str) -> str:
 def _resolve_google_news_url(google_url: str) -> str:
     """
     FUNGSI KUNCI: Decode/resolve URL redirect Google News RSS ke URL artikel asli.
-    Google News RSS membungkus URL dalam format:
-    https://news.google.com/rss/articles/CBMi[base64_encoded_data]
-
-    Strategi:
-    1. Coba decode base64 dari path URL (cepat, tanpa request)
-    2. Jika gagal, follow redirect HTTP (lebih lambat tapi reliable)
     """
     if not google_url or "news.google.com" not in google_url:
         return google_url
@@ -84,17 +82,10 @@ def _parse_tanggal(tanggal_str: str) -> str:
     return tahun.group() if tahun else tanggal_str[:10]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FIX #1a — Hitung timelimit DDGS dari JARAK KE HARI INI, bukan LEBAR RENTANG
-# ═══════════════════════════════════════════════════════════════════════════
 def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
     """
-    Tentukan parameter `timelimit` DDGS berdasarkan seberapa jauh `tanggal_selesai`
-    dari HARI INI — bukan dari lebar rentang (tanggal_mulai s.d. tanggal_selesai).
-    Return "d"/"w"/"m" hanya kalau tanggal_selesai masih cukup dekat dengan hari
-    ini; kalau sudah lebih dari ~90 hari yang lalu, kembalikan None (JANGAN pakai
-    timelimit sama sekali) — biarkan `dalam_rentang_tanggal()` jadi penjaga
-    rentang tanggal yang sesungguhnya.
+    Tentukan parameter `timelimit` DDGS berdasarkan seberapa jauh tanggal_selesai
+    dari HARI INI — bukan dari lebar rentang tanggal_mulai-tanggal_selesai.
     """
     try:
         dt_selesai = datetime.strptime(tanggal_selesai, "%Y-%m-%d")
@@ -114,13 +105,10 @@ def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
     return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FIX #1b — dalam_rentang_tanggal() sekarang return (lolos, tanggal_pasti)
-# ═══════════════════════════════════════════════════════════════════════════
 def dalam_rentang_tanggal(tanggal_artikel: str, mulai: str, selesai: str) -> tuple[bool, bool]:
     """
     Cek apakah tanggal artikel ada dalam rentang [mulai, selesai].
-    Return (lolos, tanggal_pasti) — lihat penjelasan lengkap di riwayat FIX #1.
+    Return (lolos, tanggal_pasti).
     """
     if not tanggal_artikel or len(tanggal_artikel) < 10:
         return True, False
@@ -150,7 +138,6 @@ def _deduplikasi(list_artikel: list[dict]) -> list[dict]:
 def _deduplikasi_judul(list_artikel: list[dict]) -> list[dict]:
     """
     Hapus artikel dengan judul yang sangat mirip (sindikasi berita).
-    Dua judul dianggap duplikat jika 80%+ kata-katanya sama.
     """
     def _normalize(s):
         return set(re.sub(r'[^\w\s]', '', s.lower()).split())
@@ -188,7 +175,7 @@ def _buang_homepage(list_artikel: list[dict], callback_log=None) -> list[dict]:
             continue
         if "news.google.com" in url:
             pesan_gagal = f"      [Filter] Buang URL Google belum ter-resolve: {url[:60]}"
-            print(pesan_gagal)
+            logger.debug(pesan_gagal)
             if callback_log: callback_log(pesan_gagal)
             continue
         try:
@@ -199,17 +186,13 @@ def _buang_homepage(list_artikel: list[dict], callback_log=None) -> list[dict]:
                 hasil.append(item)
             else:
                 pesan_hp = f"      [Filter] Buang homepage: {url}"
-                print(pesan_hp)
+                logger.debug(pesan_hp)
                 if callback_log: callback_log(pesan_hp)
         except Exception:
             hasil.append(item)
     return hasil
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FIX #3 — Filter ringan (non-AI) untuk membuang noise SEBELUM tahap scraping
-# ═══════════════════════════════════════════════════════════════════════════
-# Kata fungsi umum yang HAMPIR SELALU muncul di judul berita Bahasa Indonesia
 _KATA_FUNGSI_ID = {
     "dan", "di", "ke", "dari", "yang", "untuk", "dengan", "ini", "itu", "akan",
     "pada", "tidak", "adalah", "juga", "atau", "karena", "dalam", "oleh",
@@ -217,9 +200,6 @@ _KATA_FUNGSI_ID = {
     "desa", "kabupaten", "provinsi", "menteri", "pemerintah", "harga", "naik",
     "turun", "persen", "juta", "ribu", "hingga", "usai", "saat", "kini",
 }
-# Kata fungsi umum Bahasa Inggris — kalau judul DIDOMINASI kata-kata ini,
-# kemungkinan besar berasal dari situs asing/berbahasa Inggris yang cuma
-# kebetulan cocok dengan keyword umum kita.
 _KATA_FUNGSI_EN = {
     "the", "and", "for", "with", "this", "that", "will", "from", "are", "was",
     "were", "has", "have", "had", "not", "but", "you", "your", "best", "how",
@@ -237,19 +217,8 @@ _KATA_FUNGSI_EN = {
 
 def _kemungkinan_berita_indonesia(judul: str) -> bool:
     """
-    Heuristik cepat (BUKAN AI, tanpa panggilan API) untuk menebak apakah judul
-    kemungkinan berita berbahasa Indonesia, berdasarkan rasio kata fungsi
-    ID vs EN.
-
-    FIX #3: mengurangi noise ekstrem yang terlihat di log (jam tangan Seiko,
-    motor Jawa India, kode pos Kota Rajasthan, saham ticker UBI, dsb) SEBELUM
-    tahap scraping+AI screening yang mahal — bukan menggantikan AI screening,
-    cuma buang kasus yang JELAS sekali salah bahasa/negara.
-
-    Fail-open: kalau tidak ada sinyal kuat ke arah manapun (skor EN rendah
-    atau seri dengan skor ID), tetap diloloskan — supaya artikel valid dengan
-    judul pendek/nama proper noun (mis. "Bulog Tulungagung Gelontorkan
-    Ratusan Ton Beras SPHP") tidak ikut kebuang.
+    Heuristik cepat (BUKAN AI) untuk menebak apakah judul kemungkinan berita
+    berbahasa Indonesia, berdasarkan rasio kata fungsi ID vs EN.
     """
     kata = re.findall(r"[a-zA-Z]+", judul.lower())
     if not kata:
@@ -258,7 +227,6 @@ def _kemungkinan_berita_indonesia(judul: str) -> bool:
     skor_id = sum(1 for k in kata if k in _KATA_FUNGSI_ID)
     skor_en = sum(1 for k in kata if k in _KATA_FUNGSI_EN)
 
-    # Hanya tolak kalau sinyal bahasa Inggris JELAS dominan (bukan cuma seri)
     if skor_en >= 2 and skor_en > skor_id:
         return False
     return True
@@ -273,7 +241,7 @@ def _buang_bukan_bahasa_indonesia(list_artikel: list[dict], callback_log=None) -
             hasil.append(item)
         else:
             pesan = f"      [Filter] Buang (kemungkinan bukan berita Indonesia): {judul[:60]}"
-            print(pesan)
+            logger.debug(pesan)
             if callback_log: callback_log(pesan)
     return hasil
 
@@ -294,7 +262,7 @@ def cari_duckduckgo_news(
         with DDGS() as ddgs:
             for keyword in keywords:
                 pesan_log = f"      [DDG News] '{keyword}'..."
-                print(pesan_log)
+                logger.debug(pesan_log)
                 if callback_log: callback_log(pesan_log)
 
                 try:
@@ -322,14 +290,14 @@ def cari_duckduckgo_news(
                     time.sleep(1.0)
                 except Exception as e:
                     pesan_err = f"      [DDG News] Error '{keyword}': {e}"
-                    print(pesan_err)
+                    logger.warning(pesan_err)
                     if callback_log: callback_log(pesan_err)
                     time.sleep(3)
                     continue
     except Exception as e:
-        print(f"      [DDG News] Gagal inisialisasi: {e}")
+        logger.warning(f"[DDG News] Gagal inisialisasi: {e}")
 
-    print(f"   → DuckDuckGo News: {len(hasil)} artikel")
+    logger.info(f"DuckDuckGo News: {len(hasil)} artikel")
     return hasil
 
 
@@ -341,10 +309,7 @@ def cari_google_news_rss(
     max_per_keyword: int = 10,
     callback_log=None
 ) -> list[dict]:
-    """
-    Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED.
-    Sudah punya region ID sejak awal (&hl=id&gl=ID&ceid=ID:id) — tidak berubah.
-    """
+    """Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED."""
     hasil = []
     headers = {
         "User-Agent": (
@@ -355,7 +320,7 @@ def cari_google_news_rss(
     }
     for keyword in keywords:
         pesan_log = f"      [Google RSS] '{keyword}'..."
-        print(pesan_log)
+        logger.debug(pesan_log)
         if callback_log: callback_log(pesan_log)
 
         try:
@@ -367,7 +332,7 @@ def cari_google_news_rss(
             )
             resp = requests.get(rss_url, headers=headers, timeout=20)
             if resp.status_code != 200:
-                print(f"      [Google RSS] HTTP {resp.status_code}")
+                logger.warning(f"[Google RSS] HTTP {resp.status_code} untuk '{keyword}'")
                 continue
             feed  = feedparser.parse(resp.content)
             count = 0
@@ -397,11 +362,11 @@ def cari_google_news_rss(
             time.sleep(0.5)
         except Exception as e:
             pesan_err = f"      [Google RSS] Error: {e}"
-            print(pesan_err)
+            logger.warning(pesan_err)
             if callback_log: callback_log(pesan_err)
             time.sleep(1)
             continue
-    print(f"   → Google News RSS: {len(hasil)} artikel")
+    logger.info(f"Google News RSS: {len(hasil)} artikel")
     return hasil
 
 
@@ -421,7 +386,7 @@ def cari_duckduckgo_web(
             for keyword in keywords[:3]:
                 keyword_tahun = f"{keyword} {tahun}"
                 pesan_log = f"      [DDG Web] '{keyword_tahun}'..."
-                print(pesan_log)
+                logger.debug(pesan_log)
                 if callback_log: callback_log(pesan_log)
 
                 try:
@@ -444,12 +409,12 @@ def cari_duckduckgo_web(
                     time.sleep(1)
                 except Exception as e:
                     pesan_err = f"      [DDG Web] Error: {e}"
-                    print(pesan_err)
+                    logger.warning(pesan_err)
                     if callback_log: callback_log(pesan_err)
                     continue
     except Exception as e:
-        print(f"      [DDG Web] Gagal inisialisasi: {e}")
-    print(f"   → DuckDuckGo Web: {len(hasil)} artikel")
+        logger.warning(f"[DDG Web] Gagal inisialisasi: {e}")
+    logger.info(f"DuckDuckGo Web: {len(hasil)} artikel")
     return hasil
 
 
@@ -473,7 +438,7 @@ def cari_berita_multi_sumber(
         tampilan = "KOTA MAGELANG" if wilayah == "magelang" else wilayah.upper()
 
     pesan_header = f"📡 Mencari di wilayah: {tampilan} ({len(keywords)} keyword) \n📅 Rentang: {tanggal_mulai} s.d. {tanggal_selesai}"
-    print(f"\n   {pesan_header}")
+    logger.info(pesan_header.replace("\n", " | "))
     if callback_log: callback_log(pesan_header)
 
     hasil_ddg = cari_duckduckgo_news(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
@@ -482,12 +447,11 @@ def cari_berita_multi_sumber(
     gabungan = _deduplikasi(hasil_ddg + hasil_rss)
     gabungan = _deduplikasi_judul(gabungan)
     gabungan = _buang_homepage(gabungan, callback_log=callback_log)
-    # FIX #3: filter ringan non-AI, buang noise bahasa asing SEBELUM scraping
     gabungan = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
 
     if len(gabungan) < 5:
         pesan_fallback = f"⚠️ Gabungan DDG+RSS hanya {len(gabungan)} → aktifkan DDG Web..."
-        print(f"   {pesan_fallback}")
+        logger.info(pesan_fallback)
         if callback_log: callback_log(pesan_fallback)
 
         hasil_web = cari_duckduckgo_web(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
@@ -495,11 +459,10 @@ def cari_berita_multi_sumber(
         gabungan  = _deduplikasi(gabungan + hasil_web)
         gabungan  = _deduplikasi_judul(gabungan)
         gabungan  = _buang_homepage(gabungan, callback_log=callback_log)
-        # FIX #3: terapkan filter yang sama di jalur fallback DDG Web
         gabungan  = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
 
     pesan_akhir = f"📦 Total unik artikel (filter URL, Judul Mirip, Homepage & Bahasa): {len(gabungan)}"
-    print(f"\n   {pesan_akhir}")
+    logger.info(pesan_akhir)
     if callback_log: callback_log(pesan_akhir)
 
     return gabungan
