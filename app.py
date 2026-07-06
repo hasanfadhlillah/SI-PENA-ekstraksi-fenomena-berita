@@ -24,8 +24,16 @@ from radar.database import (
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
 from radar.config import DEFAULT_MIN_SKOR
+from radar.backup import (
+    buat_backup_keywords_bytes,
+    buat_backup_database_bytes,
+    pulihkan_keywords_dari_upload,
+    auto_restore_dari_hf_dataset,
+)
 from scraper import scrape_berita
 from ai_engine import ekstrak_fenomena_ai
+
+auto_restore_dari_hf_dataset()
 
 # ─── KONFIGURASI HALAMAN ───────────────────────────────────────────────────────
 st.set_page_config(
@@ -441,7 +449,9 @@ for key, default in [
     ("hasil_ekstraksi", None),
     ("ekstraksi_url_aktif", ""),
     ("json_final_siap", None),
-    ("kategori_terpilih_antrean", "— Pilih Kategori —")
+    ("kategori_terpilih_antrean", "— Pilih Kategori —"),
+    ("backup_keywords_bytes", None),
+    ("backup_db_bytes", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -496,7 +506,69 @@ with st.sidebar:
         jumlah = _hitung_kunci(key_val)
         status = f"🟢 {jumlah} Amunisi Siap" if jumlah > 0 else "🔴 Kosong"
         st.caption(f"**{nama}:** {status}")
-    _validasi_sinkronisasi_kategori()
+    st.markdown("---")
+
+    # Backup & Restore (jaring pengaman ephemeral storage HF Spaces)
+    with st.expander("💾 Backup & Restore Data (Penting!)", expanded=False):
+        st.caption(
+            "⚠️ Aplikasi ini di-deploy di Hugging Face Spaces (tier gratis) yang "
+            "TIDAK menyimpan data secara permanen — setiap kali Space di-restart "
+            "atau tidur lalu bangun lagi, riwayat artikel & keyword BISA HILANG. "
+            "Siapkan & unduh backup secara berkala, terutama sebelum jeda pemakaian lama."
+        )
+        if st.button("🔄 Siapkan File Backup Terbaru", key="btn_siapkan_backup"):
+            st.session_state["backup_keywords_bytes"] = buat_backup_keywords_bytes()
+            st.session_state["backup_db_bytes"] = buat_backup_database_bytes()
+            st.toast("Backup siap diunduh di bawah!", icon="✅")
+
+        if st.session_state["backup_keywords_bytes"] is not None:
+            col_bk1, col_bk2 = st.columns(2)
+            with col_bk1:
+                st.download_button(
+                    "⬇️ keywords.json",
+                    data=st.session_state["backup_keywords_bytes"],
+                    file_name=f"backup_keywords_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                    mime="application/json",
+                    width='stretch',
+                    key="dl_backup_keywords",
+                )
+            with col_bk2:
+                st.download_button(
+                    "⬇️ Database",
+                    data=st.session_state["backup_db_bytes"],
+                    file_name=f"backup_sifeno_tracker_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+                    mime="application/octet-stream",
+                    width='stretch',
+                    key="dl_backup_db",
+                )
+        else:
+            st.caption("Klik tombol di atas untuk menyiapkan file sebelum diunduh.")
+
+        st.markdown("**🔄 Pulihkan keywords.json dari backup:**")
+        file_restore = st.file_uploader(
+            "Upload file backup keywords.json:", type=["json"],
+            label_visibility="collapsed", key="restore_keywords_uploader"
+        )
+        if file_restore is not None:
+            if st.button("♻️ Pulihkan Sekarang", key="btn_restore_keywords"):
+                berhasil, pesan = pulihkan_keywords_dari_upload(file_restore.read())
+                if berhasil:
+                    st.success(pesan)
+                    st.rerun()
+                else:
+                    st.error(pesan)
+
+        _hf_token_ada = bool(os.environ.get("HF_TOKEN", ""))
+        _hf_repo_ada  = bool(os.environ.get("HF_BACKUP_REPO_ID", ""))
+        if _hf_token_ada and _hf_repo_ada:
+            st.success("🟢 Auto-backup ke HF Dataset AKTIF setelah tiap kategori selesai discan.")
+        else:
+            st.info(
+                "🔴 Auto-backup ke HF Dataset belum aktif. Set secret `HF_TOKEN` dan "
+                "`HF_BACKUP_REPO_ID` di Settings Space untuk mengaktifkan backup "
+                "otomatis gratis (opsional — lihat radar/backup.py untuk panduan)."
+            )
+
     st.markdown("---")
     st.caption("v1.0 | Made with ❤️ for BPS Kota Magelang")
 

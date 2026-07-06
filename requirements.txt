@@ -11,6 +11,7 @@ openpyxl>=3.1.0
 # SI-PENA RADAR
 ddgs>=9.0.0
 feedparser>=6.0.0
+huggingface_hub>=0.20.0
 
 # Additional Dependencies
 altair

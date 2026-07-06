@@ -88,7 +88,6 @@ def inisialisasi_database():
 
     conn.commit()
     conn.close()
-    # FIX #16: dipanggil sangat sering (tiap scan_kategori) -> DEBUG
     logger.debug("[Database] Inisialisasi selesai.")
 
 
@@ -195,7 +194,11 @@ def ambil_artikel_valid(
 
 
 def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tuple[list[str], list[dict]]:
-    """Memisahkan URL menjadi kelompok baru vs sudah pernah ditemukan/diekstrak."""
+    """
+    Memisahkan URL menjadi dua kelompok:
+    - url_baru: lolos untuk di-scrape (baru, atau dipaksa ulang)
+    - daftar_warning: peringatan artikel yang DILEWATI, beserta ALASANNYA
+    """
     url_baru = []
     daftar_warning = []
 
@@ -224,7 +227,22 @@ def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tu
                 logger.info(f"Memproses ulang URL yang pernah gagal/ditolak: {url}")
                 url_baru.append(url)
             else:
-                pass
+                # FIX #19: tambahkan entri warning eksplisit, bukan skip diam-diam
+                label_status = (
+                    "ditolak manual oleh staf" if info["status"] == "ditolak_user"
+                    else "tidak lolos screening AI sebelumnya"
+                )
+                daftar_warning.append({
+                    "url": url,
+                    "judul": info.get("judul_berita", ""),
+                    "kategori_lama": info.get("kategori_pdrb", ""),
+                    "tanggal_ekstrak": "",
+                    "pesan": (
+                        f"⏭️ Dilewati — {label_status} untuk kategori "
+                        f"'{info.get('kategori_pdrb', '?')}'. Aktifkan toggle "
+                        f"'Proses Ulang Artikel Lama' di sidebar untuk memindai ulang."
+                    )
+                })
 
     return url_baru, daftar_warning
 

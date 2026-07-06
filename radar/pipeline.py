@@ -18,6 +18,7 @@ from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya
                              buat_pesan_anti_buntu, siapkan_keyword_fallback)
 from .config         import DEFAULT_MIN_SKOR
 from .logger_config  import get_logger
+from .backup         import auto_backup_ke_hf_dataset
 
 logger = get_logger(__name__)
 
@@ -99,7 +100,7 @@ def _jalankan_pipeline_satu_level(
     url_baru, warnings = filter_url_baru(list_url, paksa_proses_ulang)
 
     if warnings:
-        logger.info(f"{len(warnings)} artikel sudah pernah diekstrak (akan dilewati):")
+        _log(f"⏭️ {len(warnings)} URL dilewati (sudah pernah diproses sebelumnya)")
         for w in warnings:
             logger.debug(f"   • {w['judul'][:60]} → {w['pesan']}")
 
@@ -234,6 +235,8 @@ def scan_kategori(
                 break
 
     update_status_kategori(nama_kategori, triwulan, len(semua_artikel_valid))
+
+    auto_backup_ke_hf_dataset()
 
     if semua_artikel_valid:
         semua_artikel_valid.sort(key=lambda x: x.get("skor_relevansi", 0), reverse=True)
