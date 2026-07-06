@@ -32,6 +32,8 @@ from radar.backup import (
 )
 from scraper import scrape_berita
 from ai_engine import ekstrak_fenomena_ai
+from radar.logger_config import get_logger
+logger = get_logger("app")
 
 auto_restore_dari_hf_dataset()
 
@@ -202,7 +204,7 @@ def _validasi_sinkronisasi_kategori():
                         for k in sorted(hilang_dari_keywords):
                             st.caption(f"• {k}")
     except Exception as e:
-        print(f"⚠️ [Validasi Kategori] Gagal cek sinkronisasi: {e}")
+        logger.error(f"[Validasi Kategori] Gagal cek sinkronisasi: {e}")
 
 # ─── Helper: konversi nilai AI ke string aman ─────────────────────────────────
 def _ke_str(nilai) -> str:
@@ -561,7 +563,11 @@ with st.sidebar:
         _hf_token_ada = bool(os.environ.get("HF_TOKEN", ""))
         _hf_repo_ada  = bool(os.environ.get("HF_BACKUP_REPO_ID", ""))
         if _hf_token_ada and _hf_repo_ada:
-            st.success("🟢 Auto-backup ke HF Dataset AKTIF setelah tiap kategori selesai discan.")
+            st.success(
+                "🟢 Auto-backup & Auto-restore ke HF Dataset AKTIF — data otomatis "
+                "tersimpan tiap kategori selesai discan, dan otomatis dipulihkan "
+                "kalau Space baru saja restart."
+            )
         else:
             st.info(
                 "🔴 Auto-backup ke HF Dataset belum aktif. Set secret `HF_TOKEN` dan "
@@ -591,7 +597,7 @@ with tab1:
         **Fungsi Tab Ini:** Tempat Anda memantau dan memburu berita fenomena ekonomi secara otomatis dari internet.
         1. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
         2. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
-        3. **Antrean Artikel:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
+        3. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
         """)
 
     # ── [BARU] CHANGE 1: Kriteria & Sistem Skoring ────────────────────────────
@@ -806,9 +812,9 @@ with tab1:
 
     st.markdown("---")
 
-    # ── BAGIAN C: ANTREAN ARTIKEL ─────────────────────────────────────────────
+    # ── BAGIAN C: ANTREAN ARTIKEL (Hasil Scan Radar Berita) ─────────────────────────────────────────────
     st.markdown(
-        "#### 📥 Antrean Artikel Siap Ekstrak",
+        "#### 📥 Hasil Scan Radar Berita",
         help="Daftar berita hasil Radar yang lolos seleksi dan siap dibedah oleh AI Ekstraktor."
     )
 
@@ -819,24 +825,23 @@ with tab1:
         if st.session_state.kategori_terpilih_antrean in opsi_antrean:
             index_terpilih = opsi_antrean.index(st.session_state.kategori_terpilih_antrean)
         kat_antrean = st.selectbox(
-            "Tampilkan antrean dari kategori:", opsi_antrean, index=index_terpilih,
+            "Tampilkan hasil scan dari kategori:", opsi_antrean, index=index_terpilih,
             help="Pilih kategori untuk melihat berita hasil radar yang tertangkap."
         )
         st.session_state.kategori_terpilih_antrean = kat_antrean
 
     with col_input_manual:
-        st.markdown("**📎 Atau input URL manual (dari Google/Teman):**")
+        st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
         url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
                                    label_visibility="collapsed")
         if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
-                      help="Melewati antrean radar dan langsung mengirim link ke meja Ekstraktor.")
+                      help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.")
                 and url_manual):
             st.session_state.target_url = url_manual
             st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
 
     if kat_antrean != "— Pilih Kategori —":
-        # FIX #2: teruskan slider min_skor supaya tampilan antrean konsisten
-        # dengan ambang yang dipilih user, bukan hardcode 6 di database.py
+        # Log ERROR supaya kegagalan model tidak senyap
         artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan, min_skor=min_skor)
         if not artikel_db:
             st.info("🎉 Kosong! Semua artikel di kategori ini sudah diekstrak atau belum ada scan baru.")

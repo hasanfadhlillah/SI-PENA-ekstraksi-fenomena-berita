@@ -9,7 +9,7 @@ from google.genai import types as google_types
 from radar.model_stack import (
     AI_MODEL_CATALOG as MODEL_STACK,
     MAX_TOKENS_EKSTRAKSI,
-    format_model_404_message,   # FIX #17
+    format_model_404_message,
 )
 from radar.logger_config import get_logger
 
@@ -205,9 +205,7 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
                     time.sleep(1)
                     continue
                 elif is_not_found:
-                    # FIX #17: log level ERROR dengan pesan standar, supaya
-                    # kegagalan model tidak lagi "senyap" — langsung menonjol
-                    # di tab "Logs" Hugging Face Spaces.
+                    # Log ERROR supaya kegagalan model tidak senyap
                     logger.error(format_model_404_message(cfg["nama"], cfg["model_id"], "ekstraksi 12 variabel"))
                     break
                 else:

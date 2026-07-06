@@ -1,12 +1,9 @@
 # File: radar/model_stack.py
 """
-Katalog model AI bersama untuk SI-PENA RADAR.
-
-Modul ini jadi SATU-SATUNYA sumber kebenaran untuk katalog model & urutan
-prioritas fallback, serta budget token per konteks pemakaian (ekstraksi vs
-screening). Field "max_chars" dipakai khusus oleh ai_engine.py untuk memotong
-panjang teks artikel sebelum masuk prompt ekstraksi (tidak relevan untuk
-screener.py, yang sudah memotong teks ke 4000 karakter secara terpisah).
+Katalog model AI bersama untuk SI-PENA RADAR — satu sumber kebenaran
+untuk urutan fallback model & budget token (ekstraksi vs screening).
+Field "max_chars" dipakai ai_engine.py untuk memotong teks sebelum
+masuk prompt.
 """
 
 AI_MODEL_CATALOG = [
@@ -87,10 +84,8 @@ MAX_TOKENS_SCREENING = {
 # Pesan standar untuk model 404/Not Found, dipakai bersama
 def format_model_404_message(nama_model: str, model_id: str, konteks: str) -> str:
     """
-    Bangun pesan standar saat sebuah model dalam katalog mengembalikan
-    404/Not Found. Dipakai bersama oleh ai_engine.py (ekstraksi 12 variabel)
-    dan radar/screener.py (AI screening) supaya pesannya KONSISTEN dan mudah
-    di-grep di log production (mis. cari kata kunci "MODEL TIDAK VALID").
+    Pesan standar saat model mengembalikan 404 — dipakai bersama
+    ai_engine.py & screener.py supaya konsisten dan mudah di-grep di log.
     """
     return (
         f"[MODEL TIDAK VALID] {nama_model} (model_id='{model_id}') mengembalikan "

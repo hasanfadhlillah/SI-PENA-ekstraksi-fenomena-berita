@@ -31,7 +31,7 @@ def _load_keywords() -> dict:
         try:
             with open(_KEYWORDS_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # FIX #16: dipanggil SANGAT sering (tiap scan kategori) -> DEBUG
+                # Dipanggil SANGAT sering (tiap scan kategori) -> DEBUG
                 logger.debug(f"[Keywords] Dimuat dari {_KEYWORDS_PATH}")
                 return data
         except Exception as e:

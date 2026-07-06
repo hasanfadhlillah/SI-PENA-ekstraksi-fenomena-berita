@@ -33,10 +33,9 @@ def buat_backup_keywords_bytes() -> bytes:
 
 def buat_backup_database_bytes() -> bytes:
     """
-    Ambil salinan byte-per-byte dari sifeno_tracker.db, AMAN dipakai meski
-    database sedang memakai mode WAL (lihat fix #14) dan mungkin sedang
-    dipakai proses lain — pakai sqlite3 backup API resmi (bukan copy file
-    mentah), supaya tidak dapat file yang corrupt/setengah-tertulis.
+    Ambil salinan aman dari sifeno_tracker.db pakai sqlite3 backup API
+    (bukan copy file mentah), supaya tidak dapat file corrupt walau DB
+    sedang dipakai/mode WAL.
     """
     if not os.path.exists(DB_PATH):
         return b""
@@ -63,10 +62,9 @@ def buat_backup_database_bytes() -> bytes:
 
 def pulihkan_keywords_dari_upload(isi_file: bytes) -> tuple[bool, str]:
     """
-    Pulihkan keywords.json dari file yang di-upload staf (mis. backup lama
-    yang diunduh sebelum Space di-restart). Validasi struktur dasar dulu
-    sebelum menimpa file yang sedang dipakai, supaya tidak merusak sistem
-    kalau staf salah upload file lain.
+    Pulihkan keywords.json dari file backup yang diupload staf. Validasi
+    struktur dulu sebelum menimpa, supaya tidak merusak sistem kalau salah
+    upload file lain.
     """
     try:
         data = json.loads(isi_file.decode("utf-8"))
@@ -148,14 +146,10 @@ def auto_backup_ke_hf_dataset():
 
 def auto_restore_dari_hf_dataset():
     """
-    Logika:
-    1. Kalau HF_TOKEN/HF_BACKUP_REPO_ID tidak diset -> lewati total (fail-soft).
-    2. Kalau file lokal SUDAH ADA dan tidak kosong -> JANGAN timpa (supaya
-       tidak menimpa data lokal yang justru lebih baru dari backup).
-    3. Kalau file lokal TIDAK ADA/kosong (indikasi baru habis restart) ->
-       coba unduh dari HF Dataset, kalau berhasil pakai itu, kalau gagal
-       (mis. belum pernah ada backup sebelumnya) biarkan aplikasi jalan
-       normal dengan keywords.json/db kosong seperti biasa (bukan error).
+    Tarik keywords.json/db dari HF Dataset HANYA kalau file lokal kosong
+    atau tidak ada (indikasi baru restart) — supaya tidak menimpa data
+    lokal yang lebih baru. Fail-soft kalau kredensial belum diset atau
+    belum pernah ada backup.
     """
     if not _HF_TOKEN or not _HF_BACKUP_REPO_ID:
         logger.debug(
@@ -188,7 +182,7 @@ def auto_restore_dari_hf_dataset():
                 logger.debug(f"Auto-restore keywords.json dilewati (belum ada backup?): {e}")
 
         # ── Restore sifeno_tracker.db (hanya kalau lokal tidak ada) ──
-        db_lokal_kosong = not os.path.exists(DB_PATH)
+        db_lokal_kosong = not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0
         if db_lokal_kosong:
             try:
                 path_terunduh = hf_hub_download(

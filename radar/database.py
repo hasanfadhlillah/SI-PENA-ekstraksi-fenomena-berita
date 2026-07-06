@@ -227,7 +227,7 @@ def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tu
                 logger.info(f"Memproses ulang URL yang pernah gagal/ditolak: {url}")
                 url_baru.append(url)
             else:
-                # FIX #19: tambahkan entri warning eksplisit, bukan skip diam-diam
+                # Tambahkan entri warning eksplisit, bukan skip diam-diam
                 label_status = (
                     "ditolak manual oleh staf" if info["status"] == "ditolak_user"
                     else "tidak lolos screening AI sebelumnya"

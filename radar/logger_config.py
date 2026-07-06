@@ -1,14 +1,9 @@
 # File: radar/logger_config.py
 """
 Konfigurasi logging terpusat untuk SI-PENA RADAR.
-
 Semua modul WAJIB mengambil logger dari sini via `get_logger(__name__)`,
 bukan membuat logger sendiri-sendiri atau memakai print() lagi, supaya
 format & level konsisten di seluruh aplikasi.
-
-Level log bisa diatur lewat environment variable LOG_LEVEL (default: INFO).
-Di Hugging Face Spaces, ini bisa diset lewat menu "Settings" > "Variables and
-secrets" pada Space kamu.
 """
 
 import logging
@@ -26,13 +21,9 @@ _sudah_dikonfigurasi = False
 
 def _konfigurasi_root_logger():
     """
-    Konfigurasi root logger "sipena" sekali saja (idempotent), dengan
-    StreamHandler ke stdout.
-
-    Guard idempotent ini PENTING khusus untuk Streamlit: karena Streamlit
-    menjalankan ULANG seluruh script setiap kali ada interaksi user (klik
-    tombol, ganti slider, dll.), tanpa guard ini handler akan didaftarkan
-    berkali-kali dan setiap baris log akan tercetak berulang-ulang (duplikat).
+    Konfigurasi root logger "sipena" sekali saja (idempotent). Guard ini
+    penting untuk Streamlit, yang menjalankan ulang seluruh script tiap
+    interaksi — tanpa guard, log akan tercetak duplikat berkali-kali.
     """
     global _sudah_dikonfigurasi
     if _sudah_dikonfigurasi:
@@ -51,16 +42,6 @@ def _konfigurasi_root_logger():
 
 
 def get_logger(nama_modul: str) -> logging.Logger:
-    """
-    Ambil logger untuk sebuah modul, dengan namespace "sipena.<nama_modul>".
-
-    Contoh pemakaian di tiap file:
-        from radar.logger_config import get_logger
-        logger = get_logger(__name__)
-        logger.debug("Detail teknis, hanya terlihat kalau LOG_LEVEL=DEBUG")
-        logger.info("Pesan info normal")
-        logger.warning("Pesan peringatan — perlu perhatian tapi bukan error")
-        logger.error("Pesan error — sesuatu gagal")
-    """
+    """Ambil logger untuk sebuah modul, dengan namespace "sipena.<nama_modul>"."""
     _konfigurasi_root_logger()
     return logging.getLogger(f"sipena.{nama_modul}")

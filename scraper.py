@@ -252,8 +252,7 @@ def scrape_berita(url: str) -> dict:
     ]
 
     for nama_metode, fungsi in metode_list:
-        # FIX #16: per-attempt log sangat verbose (dipanggil puluhan kali per
-        # kategori) -> level DEBUG, hanya terlihat kalau LOG_LEVEL=DEBUG.
+        # Verbose per-attempt log -> DEBUG saja
         logger.debug(f"[Mencoba] {nama_metode} untuk {clean_url[:60]}...")
 
         hasil = fungsi(clean_url)

@@ -22,7 +22,6 @@ URUTAN_FALLBACK = [
     },
     {
         "level": 3,
-        # FIX #9: nama level diperjelas menyebut kabupaten aslinya
         "nama": "Wilayah Sekitar Magelang / Eks-Karesidenan Kedu (Temanggung, Wonosobo, Purworejo, Kebumen)",
         "key": "magelang",
         "replace": None,
@@ -68,16 +67,10 @@ def dapatkan_level_fallback_berikutnya(level_sekarang: int) -> dict | None:
 
 def siapkan_keyword_fallback(konfig_level: dict, keywords_per_wilayah: dict) -> list[str]:
     """
-    Menyiapkan list keyword yang sudah disesuaikan dengan wilayah fallback.
-    Level 2: hapus qualifier "kota" -> jadi "magelang" polos (TETAP mencakup
-    "Kota Magelang", tidak melenceng ke topik "Kabupaten Magelang" yang beda
-    entitas).
-    Level 3 (FIX #9): rotasi keyword dasar ke 4 kabupaten tetangga sungguhan
-    (Temanggung, Wonosobo, Purworejo, Kebumen) secara CYCLIC — bukan cross-
-    product semua kombinasi — supaya total keyword yang dihasilkan tetap
-    sepadan dengan level lain (tidak membengkak 4x lipat dan memperlambat
-    eksekusi, lihat juga fix #3), sekaligus tetap mencakup keempat kabupaten
-    secara merata.
+    Menyiapkan keyword sesuai wilayah fallback. Level 2: qualifier "kota"
+    dihapus jadi "magelang" polos. Level 3: rotasi cyclic ke 4 kabupaten
+    tetangga (Temanggung, Wonosobo, Purworejo, Kebumen) — bukan cross-product,
+    supaya jumlah keyword tetap sepadan level lain.
     """
     base_key = konfig_level["key"]
     base_keywords = keywords_per_wilayah.get(base_key, [])

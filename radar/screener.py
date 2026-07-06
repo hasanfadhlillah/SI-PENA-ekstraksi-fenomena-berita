@@ -15,7 +15,7 @@ from .config import DEFAULT_MIN_SKOR
 from .model_stack import (
     AI_MODEL_CATALOG as SCREENER_STACK,
     MAX_TOKENS_SCREENING,
-    format_model_404_message,   # FIX #17
+    format_model_404_message,
 )
 from .logger_config import get_logger
 
@@ -176,9 +176,7 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     logger.warning(f"{cfg['nama']} Server sibuk (503). Pindah ke model berikutnya...")
                     break
                 elif "404" in err or "not found" in err or "does not exist" in err:
-                    # FIX #17: log level ERROR (bukan cuma print/warning biasa)
-                    # supaya menonjol di dashboard "Logs" dan developer sadar
-                    # model_id ini perlu diperbarui.
+                    # Log ERROR supaya menonjol, developer sadar model perlu diperbarui
                     logger.error(format_model_404_message(cfg["nama"], model_id, "AI screening"))
                     break
                 else:
@@ -356,7 +354,7 @@ def screening_batch(
 ) -> tuple[list[dict], list[dict]]:
     """
     Screening batch artikel, dengan mekanisme batch lanjutan jika hasil
-    belum mencapai target_minimal (FIX #10).
+    belum mencapai target_minimal.
     """
     if not list_artikel:
         return [], []
@@ -399,8 +397,7 @@ def screening_batch(
         )
         lolos_batch, gagal_batch = [], []
         for i, artikel in enumerate(batch, 1):
-            # FIX #16: pesan per-artikel sangat verbose -> DEBUG di console,
-            # tapi TETAP dikirim ke callback_log untuk ditampilkan di UI Streamlit.
+            # Verbose -> DEBUG di console, tapi tetap ke callback_log untuk UI
             pesan_item = f"      [{i}/{len(batch)}] Menilai: {artikel.get('judul', '')[:55]}..."
             logger.debug(pesan_item)
             if callback_log: callback_log(pesan_item)
