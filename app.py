@@ -750,13 +750,9 @@ if tab_aktif == TAB_LABELS[0]:
         c2.info("**B. Perbandingan Waktu**\nEksplisit ('naik X% dari bulan lalu', y-on-y, q-to-q) maupun implisit/naratif (misal dibandingkan kejadian serupa tahun lalu, proyeksi ke depan)")
         c3.info("**C. Pernyataan Data Resmi**\nKutipan pejabat/instansi pemerintah tentang kondisi sektor")
 
-    st.markdown("## 📡 Radar Pencari Berita Fenomena")
+        st.markdown("## 📡 Radar Pencari Berita Fenomena")
 
-    # ══════════════════════════════════════════════════════════════════════
-    # BAGIAN A: JALANKAN RADAR — diisolasi dalam st.fragment
-    # ══════════════════════════════════════════════════════════════════════
-    @st.fragment
-    def _blok_jalankan_radar():
+        # BAGIAN A: JALANKAN RADAR
         with st.container(border=True):
             st.markdown("#### 🚀 Jalankan Radar")
             col_kat, col_btn = st.columns([4, 1])
@@ -770,7 +766,7 @@ if tab_aktif == TAB_LABELS[0]:
                 )
             with col_btn:
                 btn_scan = st.button("▶ SCAN", type="primary", width='stretch',
-                                     help="Mulai pencarian dan filter AI.", key="btn_scan_radar")
+                                    help="Mulai pencarian dan filter AI.", key="btn_scan_radar")
 
             if btn_scan:
                 if tanggal_mulai > tanggal_selesai:
@@ -813,11 +809,9 @@ if tab_aktif == TAB_LABELS[0]:
                             
                             log_container = st.empty()
                             log_lines = []
-
                             def cb_log(pesan: str):
                                 log_lines.append(pesan)
                                 teks_log = "\n".join(log_lines[-10:])
-                                
                                 log_container.markdown(f"""
                                 <div style="
                                     background-color: #f7f9fa;
@@ -825,7 +819,7 @@ if tab_aktif == TAB_LABELS[0]:
                                     border-radius: 8px;
                                     padding: 10px 12px;
                                     font-family: 'Courier New', Courier, monospace;
-                                    font-size: 11px;
+                                    font-size: 12px;
                                     color: #333;
                                     line-height: 1.4;
                                     height: 160px;
@@ -870,60 +864,54 @@ if tab_aktif == TAB_LABELS[0]:
                         time.sleep(1.5)
                         st.rerun()
 
-    _blok_jalankan_radar()
+        st.markdown("---")
 
-    st.markdown("---")
+        # ── BAGIAN B: DASHBOARD STATUS ────────────────────────────────────────────
+        st.markdown("#### 📊 Status Kategori PDRB")
+        semua_status = ambil_semua_status_kategori(triwulan_berjalan)
 
-    # ── BAGIAN B: DASHBOARD STATUS ────────────────────────────────────────────
-    st.markdown("#### 📊 Status Kategori PDRB")
-    semua_status = ambil_semua_status_kategori(triwulan_berjalan)
+        if not semua_status:
+            st.info("ℹ️ Belum ada data untuk triwulan ini. Jalankan Radar terlebih dahulu.")
+        else:
+            df = pd.DataFrame(semua_status)
+            ada    = df[df["jumlah_artikel_valid"] > 0]
+            kosong = df[df["jumlah_artikel_valid"] == 0]
 
-    if not semua_status:
-        st.info("ℹ️ Belum ada data untuk triwulan ini. Jalankan Radar terlebih dahulu.")
-    else:
-        df = pd.DataFrame(semua_status)
-        ada    = df[df["jumlah_artikel_valid"] > 0]
-        kosong = df[df["jumlah_artikel_valid"] == 0]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("📋 Total Dipindai",  len(df),
+                    help="Jumlah total kategori yang sudah pernah di-scan pada triwulan ini.")
+            c2.metric("🟢 Ada Berita",       len(ada),
+                    help="Kategori yang sudah memiliki minimal 1 artikel di database.")
+            c3.metric("🔴 Kosong/Buntu",     len(kosong),
+                    help="Kategori yang belum ditemukan beritanya sama sekali.")
+            c4.metric("📈 Coverage",
+                    f"{round(len(ada)/len(df)*100)}%" if len(df) else "0%",
+                    help="Persentase kelengkapan fenomena BPS untuk triwulan ini.")
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📋 Total Dipindai",  len(df),
-                  help="Jumlah total kategori yang sudah pernah di-scan pada triwulan ini.")
-        c2.metric("🟢 Ada Berita",       len(ada),
-                  help="Kategori yang sudah memiliki minimal 1 artikel di database.")
-        c3.metric("🔴 Kosong/Buntu",     len(kosong),
-                  help="Kategori yang belum ditemukan beritanya sama sekali.")
-        c4.metric("📈 Coverage",
-                  f"{round(len(ada)/len(df)*100)}%" if len(df) else "0%",
-                  help="Persentase kelengkapan fenomena BPS untuk triwulan ini.")
+            col_ada, col_buntu = st.columns(2)
+            with col_ada:
+                st.markdown("**✅ Kategori dengan Berita**")
+                if not ada.empty:
+                    st.dataframe(
+                        ada[["kategori_pdrb", "jumlah_artikel_valid", "terakhir_scan"]]
+                        .rename(columns={"kategori_pdrb": "Kategori",
+                                        "jumlah_artikel_valid": "Artikel",
+                                        "terakhir_scan": "Terakhir Scan"}),
+                        width='stretch', hide_index=True
+                    )
+            with col_buntu:
+                st.markdown("**⚠️ Kategori Butuh Perhatian**")
+                if not kosong.empty:
+                    st.dataframe(
+                        kosong[["kategori_pdrb", "terakhir_scan"]]
+                        .rename(columns={"kategori_pdrb": "Kategori",
+                                        "terakhir_scan": "Terakhir Scan"}),
+                        width='stretch', hide_index=True
+                    )
 
-        col_ada, col_buntu = st.columns(2)
-        with col_ada:
-            st.markdown("**✅ Kategori dengan Berita**")
-            if not ada.empty:
-                st.dataframe(
-                    ada[["kategori_pdrb", "jumlah_artikel_valid", "terakhir_scan"]]
-                    .rename(columns={"kategori_pdrb": "Kategori",
-                                     "jumlah_artikel_valid": "Artikel",
-                                     "terakhir_scan": "Terakhir Scan"}),
-                    width='stretch', hide_index=True
-                )
-        with col_buntu:
-            st.markdown("**⚠️ Kategori Butuh Perhatian**")
-            if not kosong.empty:
-                st.dataframe(
-                    kosong[["kategori_pdrb", "terakhir_scan"]]
-                    .rename(columns={"kategori_pdrb": "Kategori",
-                                     "terakhir_scan": "Terakhir Scan"}),
-                    width='stretch', hide_index=True
-                )
+        st.markdown("---")
 
-    st.markdown("---")
-
-    # ══════════════════════════════════════════════════════════════════════
-    # BAGIAN C: ANTREAN ARTIKEL (Hasil Scan Radar Berita) — diisolasi dalam st.fragment
-    # ══════════════════════════════════════════════════════════════════════
-    @st.fragment
-    def _blok_hasil_scan_radar():
+        # BAGIAN C: ANTREAN ARTIKEL (Hasil Scan Radar Berita)
         st.markdown(
             "#### 📥 Hasil Scan Radar Berita",
             help="Daftar berita hasil Radar yang lolos seleksi dan siap dibedah oleh AI Ekstraktor."
@@ -945,10 +933,10 @@ if tab_aktif == TAB_LABELS[0]:
         with col_input_manual:
             st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
             url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
-                                       label_visibility="collapsed", key="text_url_manual")
+                                    label_visibility="collapsed", key="text_url_manual")
             if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
-                          help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.",
-                          key="btn_kirim_manual")
+                        help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.",
+                        key="btn_kirim_manual")
                     and url_manual):
                 st.session_state.target_url = url_manual
                 st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
@@ -977,18 +965,16 @@ if tab_aktif == TAB_LABELS[0]:
                         ca, cb, cc = st.columns([2, 2, 8])
                         with ca:
                             if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",
-                                         type="primary", help="Membawa artikel ini ke Tab 2."):
+                                        type="primary", help="Membawa artikel ini ke Tab 2."):
                                 st.session_state.target_url = art["url_berita"]
                                 st.toast("Berita dikirim! Silakan buka Tab Ekstraktor.", icon="🚀")
                         with cb:
                             if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}",
-                                         help="Buang artikel ini dari antrean."):
+                                        help="Buang artikel ini dari antrean."):
                                 tandai_artikel_ditolak(art["url_berita"])
                                 st.toast("Artikel dibuang ke tempat sampah.", icon="🗑️")
                                 time.sleep(0.5)
-                                st.rerun(scope="fragment")
-
-    _blok_hasil_scan_radar()
+                                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
