@@ -610,19 +610,54 @@ with st.sidebar:
     st.caption("v1.0 | Made with ❤️ for BPS Kota Magelang")
 
 # ─── MAIN TABS ───────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+TAB_LABELS = [
     "📡 RADAR BERITA",
     "📝 EKSTRAKTOR FENOMENA",
     "🗄️ HISTORY BERITA",
     "📈 DASHBOARD ANALISIS",
     "⚙️ KELOLA KEYWORD",
     "ℹ️ TENTANG SI-PENA",
-])
+]
+
+st.markdown("""
+<style>
+div[data-testid="stRadio"] > div[role="radiogroup"] {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 2px solid rgba(130,130,130,0.25);
+    margin-bottom: 1.2rem;
+    padding-bottom: 0;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+    background: transparent;
+    padding: 10px 16px;
+    margin: 0 !important;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+    background: rgba(74,108,247,0.08);
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+    background: rgba(74,108,247,0.15);
+    border-bottom: 3px solid #4a6cf7;
+    font-weight: 700;
+}
+div[data-testid="stRadio"] svg { display: none; }
+</style>
+""", unsafe_allow_html=True)
+
+tab_aktif = st.radio(
+    "Navigasi Tab", TAB_LABELS,
+    horizontal=True, label_visibility="collapsed", key="tab_navigasi_utama"
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1: RADAR PDRB
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab1:
+if tab_aktif == TAB_LABELS[0]:
     with st.expander("📖 Panduan Penggunaan Tab Radar Berita", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Tempat Anda memantau dan memburu berita fenomena ekonomi secara otomatis dari internet.
@@ -762,11 +797,12 @@ with tab1:
                         with st.status(
                             f"📡 Radar memindai: **{pilihan_kategori}**...", expanded=True
                         ) as status_box:
-                            log_container = st.empty()
-                            log_lines     = []
+                            log_box = st.container(height=280, border=True)
+                            log_placeholder = log_box.empty()
+                            log_lines = []
                             def cb_log(pesan: str):
                                 log_lines.append(pesan)
-                                log_container.code("\n".join(log_lines[-12:]), language=None)
+                                log_placeholder.code("\n".join(log_lines[-30:]), language=None)
                             hasil = scan_kategori(
                                 pilihan_kategori, mulai_str, selesai_str,
                                 min_skor=min_skor,
@@ -927,7 +963,7 @@ with tab1:
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 2: EKSTRAKTOR FENOMENA
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab2:
+elif tab_aktif == TAB_LABELS[1]:
     with st.expander("📖 Panduan Penggunaan Tab Ekstraktor Fenomena", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Meja operasi AI untuk membedah artikel.
@@ -1144,7 +1180,7 @@ with tab2:
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 3: HISTORY BERITA
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab3:
+elif tab_aktif == TAB_LABELS[2]:
     with st.expander("📖 Panduan Penggunaan Tab History Berita", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Pusat arsip dan ekspor data SI-PENA.
@@ -1313,7 +1349,7 @@ with tab3:
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 4: DASHBOARD ANALISIS
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab4:
+elif tab_aktif == TAB_LABELS[3]:
     st.markdown("## 📈 Dashboard Analisis Fenomena")
     st.caption("Visualisasi interaktif untuk memantau tren berita ekonomi dan performa mesin SI-PENA.")
 
@@ -1387,7 +1423,7 @@ with tab4:
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 5: KELOLA KEYWORD
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab5:
+elif tab_aktif == TAB_LABELS[4]:
     st.markdown("## ⚙️ Manajemen Keyword Pencarian")
     st.caption("Tambah, ubah, atau hapus keyword untuk setiap kategori PDRB. Perubahan langsung aktif tanpa restart.")
 
@@ -1438,7 +1474,7 @@ with tab5:
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 6: TENTANG SI-PENA
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab6:
+elif tab_aktif == TAB_LABELS[5]:
 
     # ── Hero Banner ───────────────────────────────────────────────────────────
     st.markdown("""
