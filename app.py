@@ -810,12 +810,30 @@ if tab_aktif == TAB_LABELS[0]:
                         with st.status(
                             f"📡 Radar memindai: **{pilihan_kategori}**...", expanded=True
                         ) as status_box:
-                            log_box = st.container(height=280, border=True)
-                            log_placeholder = log_box.empty()
+                            
+                            log_container = st.empty()
                             log_lines = []
+
                             def cb_log(pesan: str):
                                 log_lines.append(pesan)
-                                log_placeholder.code("\n".join(log_lines[-30:]), language=None)
+                                teks_log = "\n".join(log_lines[-10:])
+                                
+                                log_container.markdown(f"""
+                                <div style="
+                                    background-color: #f7f9fa;
+                                    border: 1px solid rgba(130,130,130,0.2);
+                                    border-radius: 8px;
+                                    padding: 10px 12px;
+                                    font-family: 'Courier New', Courier, monospace;
+                                    font-size: 11px;
+                                    color: #333;
+                                    line-height: 1.4;
+                                    height: 160px;
+                                    overflow: hidden;
+                                    white-space: pre-wrap;
+                                ">{teks_log}</div>
+                                """, unsafe_allow_html=True)
+                                
                             hasil = scan_kategori(
                                 pilihan_kategori, mulai_str, selesai_str,
                                 min_skor=min_skor,
