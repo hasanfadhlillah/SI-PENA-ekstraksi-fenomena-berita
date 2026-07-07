@@ -626,7 +626,7 @@ with tab1:
     with st.expander("📖 Panduan Penggunaan Tab Radar Berita", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Tempat Anda memantau dan memburu berita fenomena ekonomi secara otomatis dari internet.
-        1. **⚙️ Atur Dahulu di Sidebar (WAJIB sebelum SCAN):** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
+        1. **⚙️ Atur Dahulu di Sidebar:** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
         2. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
         3. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
         4. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
