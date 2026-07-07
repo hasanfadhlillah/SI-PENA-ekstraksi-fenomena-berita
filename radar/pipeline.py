@@ -97,7 +97,10 @@ def _jalankan_pipeline_satu_level(
 
     metadata_by_url = {item["url"]: item for item in hasil_search}
     list_url = [item["url"] for item in hasil_search]
-    url_baru, warnings = filter_url_baru(list_url, paksa_proses_ulang)
+    url_baru, warnings = filter_url_baru(
+        list_url, paksa_proses_ulang,
+        level_saat_ini=level_cfg["level"],   # BARU
+    )
 
     if warnings:
         _log(f"⏭️ {len(warnings)} URL dilewati (sudah pernah diproses sebelumnya)")
@@ -151,6 +154,7 @@ def _jalankan_pipeline_satu_level(
             ada_perbandingan=artikel.get("ada_perbandingan_waktu", False),
             relevan_kategori=artikel.get("relevan_dengan_kategori", False),
             layak_ekstrak=artikel.get("layak_ekstrak", False),
+            level_wilayah=level_cfg["level"],   # BARU
         )
 
     return lolos

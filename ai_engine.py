@@ -199,14 +199,17 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict) -> dict:
                     "429", "rate limit", "quota", "exhausted", "too many requests"
                 ])
                 is_not_found = "404" in err or "not found" in err
-     
+                is_payload_besar = "413" in err or "too large" in err   # <-- BARU
+
                 if is_rate_limit:
                     logger.warning(f"[Limit] Kunci ke-{idx+1} habis untuk {cfg['nama']}! Coba Kunci Cadangan {provider}...")
                     time.sleep(1)
                     continue
                 elif is_not_found:
-                    # Log ERROR supaya kegagalan model tidak senyap
                     logger.error(format_model_404_message(cfg["nama"], cfg["model_id"], "ekstraksi 12 variabel"))
+                    break
+                elif is_payload_besar:   # <-- BARU
+                    logger.warning(f"[Payload Terlalu Besar] {cfg['nama']}: artikel terlalu panjang untuk model ini, pindah ke model berikutnya...")
                     break
                 else:
                     logger.error(f"[Error] {cfg['nama']}: {err[:120]}")

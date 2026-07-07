@@ -8,10 +8,10 @@ masuk prompt.
 
 AI_MODEL_CATALOG = [
     {
-        "nama"      : "Groq — GPT-OSS 120B",
-        "provider"  : "groq",
-        "model_id"  : "openai/gpt-oss-120b",
-        "max_chars" : 8000,
+    "nama"      : "Groq — GPT-OSS 120B",
+    "provider"  : "groq",
+    "model_id"  : "openai/gpt-oss-120b",
+    "max_chars" : 6000,
     },
     {
         "nama"      : "Google — Gemini 3.1 Flash-Lite",

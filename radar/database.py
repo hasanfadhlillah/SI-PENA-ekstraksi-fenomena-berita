@@ -34,7 +34,6 @@ def inisialisasi_database():
     """
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS riwayat_artikel (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,9 +48,17 @@ def inisialisasi_database():
             relevan_kategori INTEGER DEFAULT 0,
             status           TEXT    DEFAULT 'ditemukan',
             tanggal_ditemukan DATETIME,
-            tanggal_diekstrak DATETIME
+            tanggal_diekstrak DATETIME,
+            level_wilayah    INTEGER DEFAULT 0
         )
     """)
+    # ── BARU: migrasi otomatis untuk DB lama yang belum punya kolom ini ──
+    # Aman dijalankan berkali-kali; hanya menambah kolom kalau belum ada.
+    cursor.execute("PRAGMA table_info(riwayat_artikel)")
+    kolom_ada = [baris[1] for baris in cursor.fetchall()]
+    if "level_wilayah" not in kolom_ada:
+        cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN level_wilayah INTEGER DEFAULT 0")
+        logger.info("[Database] Migrasi: kolom 'level_wilayah' ditambahkan ke riwayat_artikel.")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS status_kategori (
@@ -64,7 +71,6 @@ def inisialisasi_database():
             UNIQUE(kategori_pdrb, triwulan)
         )
     """)
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS hasil_ekstraksi (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,7 +91,6 @@ def inisialisasi_database():
             model_ai              TEXT
         )
     """)
-
     conn.commit()
     conn.close()
     logger.debug("[Database] Inisialisasi selesai.")
@@ -111,7 +116,8 @@ def simpan_artikel(
     ada_data_angka: bool,
     ada_perbandingan: bool,
     relevan_kategori: bool,
-    layak_ekstrak: bool
+    layak_ekstrak: bool,
+    level_wilayah: int = 0,   # BARU
 ):
     """Menyimpan artikel baru ke database."""
     conn = get_connection()
@@ -122,8 +128,8 @@ def simpan_artikel(
             INSERT INTO riwayat_artikel
             (url_berita, judul_berita, kategori_pdrb, triwulan,
              skor_relevansi, alasan_ai, ada_data_angka, ada_perbandingan,
-             relevan_kategori, status, tanggal_ditemukan)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             relevan_kategori, status, tanggal_ditemukan, level_wilayah)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url_berita) DO UPDATE SET
                 judul_berita = excluded.judul_berita,
                 kategori_pdrb = excluded.kategori_pdrb,
@@ -134,12 +140,13 @@ def simpan_artikel(
                 ada_perbandingan = excluded.ada_perbandingan,
                 relevan_kategori = excluded.relevan_kategori,
                 status = excluded.status,
-                tanggal_ditemukan = excluded.tanggal_ditemukan
+                tanggal_ditemukan = excluded.tanggal_ditemukan,
+                level_wilayah = excluded.level_wilayah
         """, (
             url, judul, kategori, triwulan,
             skor, alasan,
             int(ada_data_angka), int(ada_perbandingan), int(relevan_kategori),
-            status, datetime.now().isoformat()
+            status, datetime.now().isoformat(), level_wilayah
         ))
         conn.commit()
     finally:
@@ -193,21 +200,24 @@ def ambil_artikel_valid(
     return hasil
 
 
-def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tuple[list[str], list[dict]]:
+def filter_url_baru(
+    list_url: list[str],
+    paksa_proses_ulang: bool = False,
+    level_saat_ini: int = 0,   # BARU
+) -> tuple[list[str], list[dict]]:
     """
     Memisahkan URL menjadi dua kelompok:
-    - url_baru: lolos untuk di-scrape (baru, atau dipaksa ulang)
+    - url_baru: lolos untuk di-scrape (baru, dipaksa ulang, ATAU layak dinilai
+      ulang karena level sekarang lebih longgar daripada level yang menghasilkan
+      verdict 'tidak_lolos' sebelumnya)
     - daftar_warning: peringatan artikel yang DILEWATI, beserta ALASANNYA
     """
     url_baru = []
     daftar_warning = []
-
     for url in list_url:
         info = cek_url_sudah_ada(url)
-
         if info is None:
             url_baru.append(url)
-
         elif info["status"] == "diekstrak":
             tanggal = info.get('tanggal_diekstrak', 'Tanggal tidak diketahui')
             tanggal_rapi = tanggal[:10] if tanggal else ""
@@ -218,32 +228,48 @@ def filter_url_baru(list_url: list[str], paksa_proses_ulang: bool = False) -> tu
                 "tanggal_ekstrak": tanggal_rapi,
                 "pesan": f"⚠️ Sudah diekstrak untuk '{info['kategori_pdrb']}' pada {tanggal_rapi}"
             })
-
         elif info["status"] == "ditemukan":
             pass
-
-        elif info["status"] in ["ditolak_user", "tidak_lolos"]:
+        elif info["status"] == "tidak_lolos":
+            level_sebelumnya = info.get("level_wilayah", 0) or 0
             if paksa_proses_ulang:
-                logger.info(f"Memproses ulang URL yang pernah gagal/ditolak: {url}")
+                logger.info(f"Memproses ulang URL yang pernah gagal: {url}")
+                url_baru.append(url)
+            elif level_saat_ini > level_sebelumnya:
+                # BARU: level sekarang lebih longgar -> layak dinilai ulang
+                logger.info(
+                    f"🔁 [Cross-Level] Menilai ulang di Level {level_saat_ini} "
+                    f"(sebelumnya tidak lolos di Level {level_sebelumnya}): {url[:60]}..."
+                )
                 url_baru.append(url)
             else:
-                # Tambahkan entri warning eksplisit, bukan skip diam-diam
-                label_status = (
-                    "ditolak manual oleh staf" if info["status"] == "ditolak_user"
-                    else "tidak lolos screening AI sebelumnya"
-                )
                 daftar_warning.append({
                     "url": url,
                     "judul": info.get("judul_berita", ""),
                     "kategori_lama": info.get("kategori_pdrb", ""),
                     "tanggal_ekstrak": "",
                     "pesan": (
-                        f"⏭️ Dilewati — {label_status} untuk kategori "
+                        f"⏭️ Dilewati — tidak lolos screening AI di Level {level_sebelumnya} "
+                        f"untuk kategori '{info.get('kategori_pdrb', '?')}'. Aktifkan toggle "
+                        f"'Proses Ulang Artikel Lama' di sidebar untuk memindai ulang manual."
+                    )
+                })
+        elif info["status"] == "ditolak_user":
+            if paksa_proses_ulang:
+                logger.info(f"Memproses ulang URL yang pernah ditolak user: {url}")
+                url_baru.append(url)
+            else:
+                daftar_warning.append({
+                    "url": url,
+                    "judul": info.get("judul_berita", ""),
+                    "kategori_lama": info.get("kategori_pdrb", ""),
+                    "tanggal_ekstrak": "",
+                    "pesan": (
+                        f"⏭️ Dilewati — ditolak manual oleh staf untuk kategori "
                         f"'{info.get('kategori_pdrb', '?')}'. Aktifkan toggle "
                         f"'Proses Ulang Artikel Lama' di sidebar untuk memindai ulang."
                     )
                 })
-
     return url_baru, daftar_warning
 
 

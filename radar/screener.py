@@ -168,20 +168,23 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     "429", "rate limit", "quota", "exhausted",
                     "too many requests", "resource_exhausted"
                 ])
+                is_not_found = "404" in err or "not found" in err
+                is_payload_besar = "413" in err or "too large" in err 
+
                 if is_limit:
-                    logger.warning(f"{cfg['nama']} [Kunci {idx+1}] Limit! Coba kunci cadangan...")
+                    logger.warning(f"[Limit] Kunci ke-{idx+1} habis untuk {cfg['nama']}! Coba Kunci Cadangan {provider}...")
                     time.sleep(1)
                     continue
-                elif "503" in err or "unavailable" in err:
-                    logger.warning(f"{cfg['nama']} Server sibuk (503). Pindah ke model berikutnya...")
+                elif is_not_found:
+                    logger.error(format_model_404_message(cfg["nama"], cfg["model_id"], "ekstraksi 12 variabel"))
                     break
-                elif "404" in err or "not found" in err or "does not exist" in err:
-                    # Log ERROR supaya menonjol, developer sadar model perlu diperbarui
-                    logger.error(format_model_404_message(cfg["nama"], model_id, "AI screening"))
+                elif is_payload_besar:
+                    logger.warning(f"[Payload Terlalu Besar] {cfg['nama']}: artikel terlalu panjang untuk model ini, pindah ke model berikutnya...")
                     break
                 else:
-                    logger.warning(f"{cfg['nama']} Error: {str(e)[:80]}")
+                    logger.error(f"[Error] {cfg['nama']}: {err[:120]}")
                     break
+
     raise Exception("Semua model dan puluhan API Key error atau habis kuota. Coba lagi besok.")
 
 
@@ -348,7 +351,7 @@ def screening_batch(
     wilayah: str,
     min_skor: int = DEFAULT_MIN_SKOR,
     jeda_detik: float = 1.0,
-    max_artikel: int = 15,
+    max_artikel: int = 25,
     target_minimal: int | None = None,
     callback_log=None,
 ) -> tuple[list[dict], list[dict]]:

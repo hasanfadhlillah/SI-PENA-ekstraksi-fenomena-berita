@@ -476,8 +476,8 @@ with st.sidebar:
     st.markdown("### 📅 Rentang Waktu Pencarian")
     default_end   = datetime.now()
     default_start = default_end - timedelta(days=90)
-    tanggal_mulai   = st.date_input("Dari Tanggal",   default_start, help="Batas awal berita diterbitkan.")
-    tanggal_selesai = st.date_input("Sampai Tanggal", default_end,   help="Batas akhir berita diterbitkan.")
+    tanggal_mulai   = st.date_input("Dari Tanggal",   default_start, help="Batas awal berita diterbitkan.", key="date_mulai")
+    tanggal_selesai = st.date_input("Sampai Tanggal", default_end,   help="Batas akhir berita diterbitkan.", key="date_selesai")
 
     if tanggal_mulai > tanggal_selesai:
         st.error("Tanggal mulai tidak boleh setelah tanggal selesai!")
@@ -491,14 +491,16 @@ with st.sidebar:
 
     st.markdown("### 🎛️ Pengaturan AI Radar")
     min_skor    = st.slider("Skor Minimum Lolos", 1, 10, DEFAULT_MIN_SKOR,
-                            help="Filter seberapa ketat AI menyeleksi berita.")
+                            help="Filter seberapa ketat AI menyeleksi berita.", key="slider_min_skor")
     paksa_ulang = st.toggle("🔄 Proses Ulang Artikel Lama", value=False,
-                            help="Jika diaktifkan, Radar akan men-scan ulang berita yang pernah ditolak/gagal.")
+                            help="Jika diaktifkan, Radar akan men-scan ulang berita yang pernah ditolak/gagal.",
+                            key="toggle_paksa_ulang")
     scan_semua  = st.toggle("🌐 Scan Semua Level Wilayah (khusus Batch Scan)", value=False,
                             help="Toggle ini HANYA berlaku untuk mode '✨ SEMUA KATEGORI (BATCH SCAN)'. "
                                  "Nonaktif (default) = Batch Scan berhenti begitu tiap kategori menemukan "
                                  "minimal 3 artikel. Catatan: scan 1 kategori (bukan Batch Scan) SELALU memindai semua "
-                                 "5 level wilayah secara penuh, tidak terpengaruh toggle ini.")
+                                 "5 level wilayah secara penuh, tidak terpengaruh toggle ini.",
+                            key="toggle_scan_semua")
 
     st.markdown("---")
     st.markdown("### 🚦 Status Pasukan AI (Pool)")
@@ -672,98 +674,108 @@ with tab1:
 
     st.markdown("## 📡 Radar Pencari Berita Fenomena")
 
-    with st.container(border=True):
-        st.markdown("#### 🚀 Jalankan Radar")
-        col_kat, col_btn = st.columns([4, 1])
-        with col_kat:
-            pilihan_kategori = st.selectbox(
-                "Target Kategori:",
-                ["✨ SEMUA KATEGORI (BATCH SCAN)"] + DAFTAR_KATEGORI,
-                label_visibility="collapsed",
-                help="Pilih 1 kategori untuk discan cepat, atau pilih BATCH SCAN untuk memproses semua kategori sekaligus."
-            )
-        with col_btn:
-            btn_scan = st.button("▶ SCAN", type="primary", width='stretch',
-                                 help="Mulai pencarian dan filter AI.")
+    # ══════════════════════════════════════════════════════════════════════
+    # BAGIAN A: JALANKAN RADAR — diisolasi dalam st.fragment
+    # ══════════════════════════════════════════════════════════════════════
+    @st.fragment
+    def _blok_jalankan_radar():
+        with st.container(border=True):
+            st.markdown("#### 🚀 Jalankan Radar")
+            col_kat, col_btn = st.columns([4, 1])
+            with col_kat:
+                pilihan_kategori = st.selectbox(
+                    "Target Kategori:",
+                    ["✨ SEMUA KATEGORI (BATCH SCAN)"] + DAFTAR_KATEGORI,
+                    label_visibility="collapsed",
+                    help="Pilih 1 kategori untuk discan cepat, atau pilih BATCH SCAN untuk memproses semua kategori sekaligus.",
+                    key="selectbox_pilihan_kategori"
+                )
+            with col_btn:
+                btn_scan = st.button("▶ SCAN", type="primary", width='stretch',
+                                     help="Mulai pencarian dan filter AI.", key="btn_scan_radar")
 
-        if btn_scan:
-            if tanggal_mulai > tanggal_selesai:
-                st.error("Perbaiki rentang tanggal di sidebar terlebih dahulu.")
-            else:
-                mulai_str   = tanggal_mulai.strftime("%Y-%m-%d")
-                selesai_str = tanggal_selesai.strftime("%Y-%m-%d")
-                try:
-                    _hitung_triwulan(mulai_str)
-                except ValueError as e:
-                    st.error(f"⚠️ {e}")
-                    st.stop()
-
-                if pilihan_kategori == "✨ SEMUA KATEGORI (BATCH SCAN)":
-                    prog   = st.progress(0)
-                    status = st.empty()
-                    def cb_progress(kat, idx, total):
-                        prog.progress(idx / total)
-                        status.info(f"🔄 [{idx}/{total}] Memindai: **{kat}**...")
-                    with st.spinner("Memulai Batch Scan — mohon tunggu, Anda bisa minum kopi dulu ☕..."):
-                        hasil_batch = batch_scan_semua_kategori(
-                            DAFTAR_KATEGORI, mulai_str, selesai_str,
-                            min_skor=min_skor, paksa_proses_ulang=paksa_ulang,
-                            scan_semua_level=scan_semua,
-                            callback_progress=cb_progress
-                        )
-                    prog.empty(); status.empty()
-                    r = hasil_batch["ringkasan"]
-                    st.success(
-                        f"✅ Batch Scan Selesai! Berita ditemukan di **{r['sukses']} kategori** "
-                        f"({r['persen_sukses']}%). Silakan cek tabel antrean di bawah."
-                    )
-                    time.sleep(2); st.rerun()
+            if btn_scan:
+                if tanggal_mulai > tanggal_selesai:
+                    st.error("Perbaiki rentang tanggal di sidebar terlebih dahulu.")
                 else:
-                    hasil = {}
-                    with st.status(
-                        f"📡 Radar memindai: **{pilihan_kategori}**...", expanded=True
-                    ) as status_box:
-                        log_container = st.empty()
-                        log_lines     = []
-                        def cb_log(pesan: str):
-                            log_lines.append(pesan)
-                            log_container.markdown(
-                                "\n".join([f"`{l}`" for l in log_lines[-12:]])
-                            )
-                        hasil = scan_kategori(
-                            pilihan_kategori, mulai_str, selesai_str,
-                            min_skor=min_skor,
-                            paksa_proses_ulang=paksa_ulang,
-                            scan_semua_level=True,
-                            aktifkan_fallback=True,
-                            callback_log=cb_log,
-                        )
-                        if hasil["status"] == "sukses":
-                            status_box.update(
-                                label=f"✅ Ditemukan {hasil['jumlah_valid']} artikel valid!",
-                                state="complete"
-                            )
-                        else:
-                            status_box.update(
-                                label="❌ Tidak ada berita ditemukan.",
-                                state="error"
-                            )
+                    mulai_str   = tanggal_mulai.strftime("%Y-%m-%d")
+                    selesai_str = tanggal_selesai.strftime("%Y-%m-%d")
+                    try:
+                        _hitung_triwulan(mulai_str)
+                    except ValueError as e:
+                        st.error(f"⚠️ {e}")
+                        st.stop()
 
-                    if hasil["status"] == "sukses":
+                    if pilihan_kategori == "✨ SEMUA KATEGORI (BATCH SCAN)":
+                        prog   = st.progress(0)
+                        status = st.empty()
+                        def cb_progress(kat, idx, total):
+                            prog.progress(idx / total)
+                            status.info(f"🔄 [{idx}/{total}] Memindai: **{kat}**...")
+                        with st.spinner("Memulai Batch Scan — mohon tunggu, Anda bisa minum kopi dulu ☕..."):
+                            hasil_batch = batch_scan_semua_kategori(
+                                DAFTAR_KATEGORI, mulai_str, selesai_str,
+                                min_skor=min_skor, paksa_proses_ulang=paksa_ulang,
+                                scan_semua_level=scan_semua,
+                                callback_progress=cb_progress
+                            )
+                        prog.empty(); status.empty()
+                        r = hasil_batch["ringkasan"]
                         st.success(
-                            f"✅ Ditemukan **{hasil['jumlah_valid']} artikel** valid! "
-                            f"Mengarahkan ke antrean..."
+                            f"✅ Batch Scan Selesai! Berita ditemukan di **{r['sukses']} kategori** "
+                            f"({r['persen_sukses']}%). Silakan cek tabel antrean di bawah."
                         )
-                        st.session_state.kategori_terpilih_antrean = pilihan_kategori
+                        time.sleep(2)
+                        st.rerun()
                     else:
-                        st.error(hasil.get("pesan_utama", "Tidak ada berita ditemukan."))
-                        with st.expander("💡 Saran Keyword Manual dari AI"):
-                            for kw in hasil.get("saran_keyword", []):
-                                st.markdown(f"- `{kw}`")
-                            st.markdown("**Coba cari manual di sumber berikut:**")
-                            for s in hasil.get("saran_sumber", []):
-                                st.markdown(f"- [{s}](https://{s})")
-                    time.sleep(1.5); st.rerun()
+                        hasil = {}
+                        with st.status(
+                            f"📡 Radar memindai: **{pilihan_kategori}**...", expanded=True
+                        ) as status_box:
+                            log_container = st.empty()
+                            log_lines     = []
+                            def cb_log(pesan: str):
+                                log_lines.append(pesan)
+                                log_container.markdown(
+                                    "\n".join([f"`{l}`" for l in log_lines[-12:]])
+                                )
+                            hasil = scan_kategori(
+                                pilihan_kategori, mulai_str, selesai_str,
+                                min_skor=min_skor,
+                                paksa_proses_ulang=paksa_ulang,
+                                scan_semua_level=True,
+                                aktifkan_fallback=True,
+                                callback_log=cb_log,
+                            )
+                            if hasil["status"] == "sukses":
+                                status_box.update(
+                                    label=f"✅ Ditemukan {hasil['jumlah_valid']} artikel valid!",
+                                    state="complete"
+                                )
+                            else:
+                                status_box.update(
+                                    label="❌ Tidak ada berita ditemukan.",
+                                    state="error"
+                                )
+
+                        if hasil["status"] == "sukses":
+                            st.success(
+                                f"✅ Ditemukan **{hasil['jumlah_valid']} artikel** valid! "
+                                f"Mengarahkan ke antrean..."
+                            )
+                            st.session_state.kategori_terpilih_antrean = pilihan_kategori
+                        else:
+                            st.error(hasil.get("pesan_utama", "Tidak ada berita ditemukan."))
+                            with st.expander("💡 Saran Keyword Manual dari AI"):
+                                for kw in hasil.get("saran_keyword", []):
+                                    st.markdown(f"- `{kw}`")
+                                st.markdown("**Coba cari manual di sumber berikut:**")
+                                for s in hasil.get("saran_sumber", []):
+                                    st.markdown(f"- [{s}](https://{s})")
+                        time.sleep(1.5)
+                        st.rerun()
+
+    _blok_jalankan_radar()
 
     st.markdown("---")
 
@@ -812,68 +824,76 @@ with tab1:
 
     st.markdown("---")
 
-    # ── BAGIAN C: ANTREAN ARTIKEL (Hasil Scan Radar Berita) ─────────────────────────────────────────────
-    st.markdown(
-        "#### 📥 Hasil Scan Radar Berita",
-        help="Daftar berita hasil Radar yang lolos seleksi dan siap dibedah oleh AI Ekstraktor."
-    )
-
-    col_filter, col_input_manual = st.columns([2, 2])
-    with col_filter:
-        opsi_antrean   = ["— Pilih Kategori —"] + DAFTAR_KATEGORI
-        index_terpilih = 0
-        if st.session_state.kategori_terpilih_antrean in opsi_antrean:
-            index_terpilih = opsi_antrean.index(st.session_state.kategori_terpilih_antrean)
-        kat_antrean = st.selectbox(
-            "Tampilkan hasil scan dari kategori:", opsi_antrean, index=index_terpilih,
-            help="Pilih kategori untuk melihat berita hasil radar yang tertangkap."
+    # ══════════════════════════════════════════════════════════════════════
+    # BAGIAN C: ANTREAN ARTIKEL (Hasil Scan Radar Berita) — diisolasi dalam st.fragment
+    # ══════════════════════════════════════════════════════════════════════
+    @st.fragment
+    def _blok_hasil_scan_radar():
+        st.markdown(
+            "#### 📥 Hasil Scan Radar Berita",
+            help="Daftar berita hasil Radar yang lolos seleksi dan siap dibedah oleh AI Ekstraktor."
         )
-        st.session_state.kategori_terpilih_antrean = kat_antrean
 
-    with col_input_manual:
-        st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
-        url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
-                                   label_visibility="collapsed")
-        if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
-                      help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.")
-                and url_manual):
-            st.session_state.target_url = url_manual
-            st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
+        col_filter, col_input_manual = st.columns([2, 2])
+        with col_filter:
+            opsi_antrean   = ["— Pilih Kategori —"] + DAFTAR_KATEGORI
+            index_terpilih = 0
+            if st.session_state.kategori_terpilih_antrean in opsi_antrean:
+                index_terpilih = opsi_antrean.index(st.session_state.kategori_terpilih_antrean)
+            kat_antrean = st.selectbox(
+                "Tampilkan hasil scan dari kategori:", opsi_antrean, index=index_terpilih,
+                help="Pilih kategori untuk melihat berita hasil radar yang tertangkap.",
+                key="selectbox_kat_antrean"
+            )
+            st.session_state.kategori_terpilih_antrean = kat_antrean
 
-    if kat_antrean != "— Pilih Kategori —":
-        # Log ERROR supaya kegagalan model tidak senyap
-        artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan, min_skor=min_skor)
-        if not artikel_db:
-            st.info("🎉 Kosong! Semua artikel di kategori ini sudah diekstrak atau belum ada scan baru.")
-        else:
-            st.markdown(f"**{len(artikel_db)} artikel menunggu ekstraksi:**")
-            for art in artikel_db:
-                skor  = art["skor_relevansi"]
-                badge = "badge-skor-hijau" if skor >= 8 else "badge-skor-kuning"
-                label = "🟢" if skor >= 8 else "🟡"
-                with st.container():
-                    st.markdown(f"""
-                    <div class="kartu-artikel">
-                        <b>{art['judul_berita']}</b><br>
-                        <a href="{art['url_berita']}" target="_blank"><small>🔗 {art['url_berita']}</small></a><br><br>
-                        <span class="{badge}">{label} Skor AI: {skor}/10</span>
-                        &nbsp; {'✅ Ada Angka' if art['ada_data_angka'] else '❌ Tanpa Angka'}
-                        &nbsp; {'✅ Ada Perbandingan' if art['ada_perbandingan'] else '❌ Tanpa Perbandingan'}
-                        <div class="alasan-box">💬 {art['alasan_ai']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    ca, cb, cc = st.columns([2, 2, 8])
-                    with ca:
-                        if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",
-                                     type="primary", help="Membawa artikel ini ke Tab 2."):
-                            st.session_state.target_url = art["url_berita"]
-                            st.toast("Berita dikirim! Silakan buka Tab Ekstraktor.", icon="🚀")
-                    with cb:
-                        if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}",
-                                     help="Buang artikel ini dari antrean."):
-                            tandai_artikel_ditolak(art["url_berita"])
-                            st.toast("Artikel dibuang ke tempat sampah.", icon="🗑️")
-                            time.sleep(0.5); st.rerun()
+        with col_input_manual:
+            st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
+            url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
+                                       label_visibility="collapsed", key="text_url_manual")
+            if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
+                          help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.",
+                          key="btn_kirim_manual")
+                    and url_manual):
+                st.session_state.target_url = url_manual
+                st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
+
+        if kat_antrean != "— Pilih Kategori —":
+            artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan, min_skor=min_skor)
+            if not artikel_db:
+                st.info("🎉 Kosong! Semua artikel di kategori ini sudah diekstrak atau belum ada scan baru.")
+            else:
+                st.markdown(f"**{len(artikel_db)} artikel menunggu ekstraksi:**")
+                for art in artikel_db:
+                    skor  = art["skor_relevansi"]
+                    badge = "badge-skor-hijau" if skor >= 8 else "badge-skor-kuning"
+                    label = "🟢" if skor >= 8 else "🟡"
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="kartu-artikel">
+                            <b>{art['judul_berita']}</b><br>
+                            <a href="{art['url_berita']}" target="_blank"><small>🔗 {art['url_berita']}</small></a><br><br>
+                            <span class="{badge}">{label} Skor AI: {skor}/10</span>
+                            &nbsp; {'✅ Ada Angka' if art['ada_data_angka'] else '❌ Tanpa Angka'}
+                            &nbsp; {'✅ Ada Perbandingan' if art['ada_perbandingan'] else '❌ Tanpa Perbandingan'}
+                            <div class="alasan-box">💬 {art['alasan_ai']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        ca, cb, cc = st.columns([2, 2, 8])
+                        with ca:
+                            if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",
+                                         type="primary", help="Membawa artikel ini ke Tab 2."):
+                                st.session_state.target_url = art["url_berita"]
+                                st.toast("Berita dikirim! Silakan buka Tab Ekstraktor.", icon="🚀")
+                        with cb:
+                            if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}",
+                                         help="Buang artikel ini dari antrean."):
+                                tandai_artikel_ditolak(art["url_berita"])
+                                st.toast("Artikel dibuang ke tempat sampah.", icon="🗑️")
+                                time.sleep(0.5)
+                                st.rerun(scope="fragment")
+
+    _blok_hasil_scan_radar()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -896,11 +916,13 @@ with tab2:
             "URL Berita:",
             value=st.session_state.target_url,
             placeholder="Tempel link berita di sini...",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            key="input_url_ekstraktor"
         )
         btn_ekstrak = st.button("🤖 MULAI EKSTRAK", type="primary",
                                 width='stretch',
-                                help="AI akan mulai membaca artikel secara penuh.")
+                                help="AI akan mulai membaca artikel secara penuh.",
+                                key="btn_mulai_ekstrak")
 
     if btn_ekstrak:
         if not url_input.strip():
@@ -984,7 +1006,8 @@ with tab2:
             submit = st.form_submit_button(
                 "✅ FINALISASI & TANDAI SELESAI", type="primary",
                 width='stretch',
-                help="Menyimpan hasil ke database agar laporan bisa didownload."
+                help="Menyimpan hasil ke database agar laporan bisa didownload.",
+                key="submit_finalisasi"
             )
 
             if submit:
@@ -1085,7 +1108,7 @@ with tab2:
             st.dataframe(df_preview, width='stretch', hide_index=True,
                          column_config={"Hasil Ekstraksi": st.column_config.TextColumn(width="large")})
 
-        if st.button("🔄 Mulai Kerjakan Artikel Baru"):
+        if st.button("🔄 Mulai Kerjakan Artikel Baru", key="btn_artikel_baru"):
             st.session_state.json_final_siap = None
             st.rerun()
 
@@ -1133,18 +1156,21 @@ with tab3:
             filter_status = st.multiselect(
                 "Filter Status:",
                 ["ditemukan", "diekstrak", "tidak_lolos", "ditolak_user"],
-                default=["ditemukan", "diekstrak"]
+                default=["ditemukan", "diekstrak"],
+                key="multiselect_filter_status"
             )
         with col_f2:
             filter_tw = st.multiselect(
                 "Filter Triwulan:",
                 df_riwayat["Triwulan"].unique().tolist() if not df_riwayat.empty else [],
-                default=df_riwayat["Triwulan"].unique().tolist()[:1] if not df_riwayat.empty else []
+                default=df_riwayat["Triwulan"].unique().tolist()[:1] if not df_riwayat.empty else [],
+                key="multiselect_filter_tw"
             )
         with col_f3:
             filter_kat = st.multiselect(
                 "Filter Kategori (Opsional):",
-                df_riwayat["Kategori PDRB"].unique().tolist() if not df_riwayat.empty else []
+                df_riwayat["Kategori PDRB"].unique().tolist() if not df_riwayat.empty else [],
+                key="multiselect_filter_kat"
             )
 
         df_tampil = df_riwayat.copy()
@@ -1338,7 +1364,7 @@ with tab5:
     st.caption("Tambah, ubah, atau hapus keyword untuk setiap kategori PDRB. Perubahan langsung aktif tanpa restart.")
 
     kw_data = _load_keywords()
-    kat_edit = st.selectbox("Pilih Kategori untuk Diedit:", list(kw_data.keys()))
+    kat_edit = st.selectbox("Pilih Kategori untuk Diedit:", list(kw_data.keys()), key="selectbox_kat_edit")
 
     if kat_edit:
         col_m, col_j, col_n = st.columns(3)
@@ -1361,7 +1387,7 @@ with tab5:
                 )
                 new_keywords[key] = [k.strip() for k in edited.split("\n") if k.strip()]
 
-        if st.button("💾 Simpan Perubahan", type="primary", width='stretch'):
+        if st.button("💾 Simpan Perubahan", type="primary", width='stretch', key="btn_simpan_keyword"):
             kw_data[kat_edit] = new_keywords
             _save_keywords(kw_data)
             st.success(f"✅ Keyword untuk '{kat_edit}' berhasil disimpan!")
@@ -1369,8 +1395,8 @@ with tab5:
 
     st.markdown("---")
     st.markdown("**➕ Tambah Kategori Baru**")
-    nama_baru = st.text_input("Nama Kategori Baru:")
-    if st.button("Tambah Kategori") and nama_baru:
+    nama_baru = st.text_input("Nama Kategori Baru:", key="text_nama_baru")
+    if st.button("Tambah Kategori", key="btn_tambah_kategori") and nama_baru:
         kw_data = _load_keywords()
         if nama_baru not in kw_data:
             kw_data[nama_baru] = {"magelang": [], "jateng": [], "nasional": []}

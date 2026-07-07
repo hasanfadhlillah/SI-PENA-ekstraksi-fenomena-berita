@@ -6,14 +6,17 @@ Sumber: DuckDuckGo News + Google News RSS + DuckDuckGo Web
 import time
 import re
 import base64
+import random 
 import requests
 import feedparser
-from datetime import datetime
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ddgs import DDGS
-
 from .logger_config import get_logger
 
 logger = get_logger(__name__)
+
+MAX_WORKERS_SEARCH = 5
 
 
 # ─── HELPER ────────────────────────────────────────────────────────────────────
@@ -83,25 +86,21 @@ def _parse_tanggal(tanggal_str: str) -> str:
 
 
 def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
-    """
-    Tentukan parameter `timelimit` DDGS berdasarkan seberapa jauh tanggal_selesai
-    dari HARI INI — bukan dari lebar rentang tanggal_mulai-tanggal_selesai.
-    """
     try:
         dt_selesai = datetime.strptime(tanggal_selesai, "%Y-%m-%d")
     except Exception:
         return None
-
     jarak_hari = (datetime.now() - dt_selesai).days
     if jarak_hari < 0:
         jarak_hari = 0
-
     if jarak_hari <= 7:
         return "d"
     elif jarak_hari <= 30:
         return "w"
     elif jarak_hari <= 90:
         return "m"
+    elif jarak_hari <= 365:
+        return "y"
     return None
 
 
@@ -122,6 +121,13 @@ def dalam_rentang_tanggal(tanggal_artikel: str, mulai: str, selesai: str) -> tup
     except Exception:
         return True, False
 
+def _tambah_hari(tanggal_str: str, n: int) -> str:
+    """Tambah n hari dari tanggal YYYY-MM-DD. Fallback ke string asli jika gagal parse."""
+    try:
+        dt = datetime.strptime(tanggal_str, "%Y-%m-%d")
+        return (dt + timedelta(days=n)).strftime("%Y-%m-%d")
+    except Exception:
+        return tanggal_str
 
 def _deduplikasi(list_artikel: list[dict]) -> list[dict]:
     """Hapus duplikat berdasarkan URL."""
@@ -247,6 +253,57 @@ def _buang_bukan_bahasa_indonesia(list_artikel: list[dict], callback_log=None) -
 
 
 # ─── SUMBER 1: DUCKDUCKGO NEWS ─────────────────────────────────────────────────
+def _cari_ddg_news_satu_keyword(
+    keyword: str,
+    tanggal_mulai: str,
+    tanggal_selesai: str,
+    timelimit: str | None,
+    max_per_keyword: int,
+    callback_log=None
+) -> list[dict]:
+    """Worker: cari 1 keyword di DDG News, dengan retry sekali saat timeout."""
+    time.sleep(random.uniform(0.2, 0.8))   # jitter kecil, hindari burst serentak
+    pesan_log = f"      [DDG News] '{keyword}'..."
+    logger.debug(pesan_log)
+    if callback_log: callback_log(pesan_log)
+    hasil_lokal = []
+    berita = []
+    for percobaan in range(2):
+        try:
+            with DDGS() as ddgs:
+                ddgs_kwargs = dict(max_results=max_per_keyword, region="id-id")
+                if timelimit:
+                    ddgs_kwargs["timelimit"] = timelimit
+                berita = list(ddgs.news(keyword, **ddgs_kwargs))
+            break
+        except Exception as e:
+            err = str(e).lower()
+            if "timed out" in err and percobaan == 0:
+                pesan_retry = f"      [DDG News] Timeout, coba ulang sekali: '{keyword}'..."
+                logger.debug(pesan_retry)
+                if callback_log: callback_log(pesan_retry)
+                time.sleep(2)
+                continue
+            pesan_err = f"      [DDG News] Error '{keyword}': {e}"
+            logger.warning(pesan_err)
+            if callback_log: callback_log(pesan_err)
+            break
+    for item in berita:
+        url = _normalisasi_url(item.get("url", ""))
+        tgl = _parse_tanggal(item.get("date", ""))
+        lolos, tanggal_pasti = dalam_rentang_tanggal(tgl, tanggal_mulai, tanggal_selesai)
+        if url and lolos:
+            hasil_lokal.append({
+                "url":           url,
+                "judul":         item.get("title", ""),
+                "tanggal":       tgl,
+                "tanggal_pasti": tanggal_pasti,
+                "sumber":        item.get("source", ""),
+                "sumber_search": "DuckDuckGo News"
+            })
+    return hasil_lokal
+
+
 def cari_duckduckgo_news(
     keywords: list[str],
     tanggal_mulai: str,
@@ -254,63 +311,39 @@ def cari_duckduckgo_news(
     max_per_keyword: int = 8,
     callback_log=None
 ) -> list[dict]:
-    """Sumber 1: DuckDuckGo News. Gratis unlimited."""
+    """Sumber 1: DuckDuckGo News. Gratis unlimited. Dicari PARALEL antar keyword."""
     hasil = []
     timelimit = _hitung_timelimit_ddgs(tanggal_selesai)
-
-    try:
-        with DDGS() as ddgs:
-            for keyword in keywords:
-                pesan_log = f"      [DDG News] '{keyword}'..."
-                logger.debug(pesan_log)
-                if callback_log: callback_log(pesan_log)
-
-                try:
-                    ddgs_kwargs = dict(
-                        max_results=max_per_keyword,
-                        region="id-id",
-                    )
-                    if timelimit:
-                        ddgs_kwargs["timelimit"] = timelimit
-                    berita = list(ddgs.news(keyword, **ddgs_kwargs))
-
-                    for item in berita:
-                        url = _normalisasi_url(item.get("url", ""))
-                        tgl = _parse_tanggal(item.get("date", ""))
-                        lolos, tanggal_pasti = dalam_rentang_tanggal(tgl, tanggal_mulai, tanggal_selesai)
-                        if url and lolos:
-                            hasil.append({
-                                "url":           url,
-                                "judul":         item.get("title", ""),
-                                "tanggal":       tgl,
-                                "tanggal_pasti": tanggal_pasti,
-                                "sumber":        item.get("source", ""),
-                                "sumber_search": "DuckDuckGo News"
-                            })
-                    time.sleep(1.0)
-                except Exception as e:
-                    pesan_err = f"      [DDG News] Error '{keyword}': {e}"
-                    logger.warning(pesan_err)
-                    if callback_log: callback_log(pesan_err)
-                    time.sleep(3)
-                    continue
-    except Exception as e:
-        logger.warning(f"[DDG News] Gagal inisialisasi: {e}")
-
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_SEARCH) as executor:
+        futures = [
+            executor.submit(
+                _cari_ddg_news_satu_keyword, kw, tanggal_mulai, tanggal_selesai,
+                timelimit, max_per_keyword, callback_log
+            )
+            for kw in keywords
+        ]
+        for future in as_completed(futures):
+            try:
+                hasil.extend(future.result())
+            except Exception as e:
+                logger.warning(f"[DDG News] Worker gagal: {e}")
     logger.info(f"DuckDuckGo News: {len(hasil)} artikel")
     return hasil
 
 
 # ─── SUMBER 2: GOOGLE NEWS RSS ─────────────────────────────────────────────────
-def cari_google_news_rss(
-    keywords: list[str],
+def _cari_google_rss_satu_keyword(
+    keyword: str,
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 10,
+    max_per_keyword: int,
     callback_log=None
 ) -> list[dict]:
-    """Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED."""
-    hasil = []
+    """Worker: cari 1 keyword di Google News RSS dengan filter tanggal after:/before:."""
+    time.sleep(random.uniform(0.2, 0.8))   # jitter kecil, hindari burst serentak
+    pesan_log = f"      [Google RSS] '{keyword}' ({tanggal_mulai} s.d. {tanggal_selesai})..."
+    logger.debug(pesan_log)
+    if callback_log: callback_log(pesan_log)
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -318,54 +351,74 @@ def cari_google_news_rss(
             "Chrome/124.0.0.0 Safari/537.36"
         )
     }
-    for keyword in keywords:
-        pesan_log = f"      [Google RSS] '{keyword}'..."
-        logger.debug(pesan_log)
-        if callback_log: callback_log(pesan_log)
-
-        try:
-            keyword_encoded = requests.utils.quote(keyword)
-            rss_url = (
-                f"https://news.google.com/rss/search"
-                f"?q={keyword_encoded}"
-                f"&hl=id&gl=ID&ceid=ID:id"
-            )
-            resp = requests.get(rss_url, headers=headers, timeout=20)
-            if resp.status_code != 200:
-                logger.warning(f"[Google RSS] HTTP {resp.status_code} untuk '{keyword}'")
+    hasil_lokal = []
+    tanggal_selesai_eksklusif = _tambah_hari(tanggal_selesai, 1)
+    try:
+        keyword_dengan_tanggal = f"{keyword} after:{tanggal_mulai} before:{tanggal_selesai_eksklusif}"
+        keyword_encoded = requests.utils.quote(keyword_dengan_tanggal)
+        rss_url = (
+            f"https://news.google.com/rss/search"
+            f"?q={keyword_encoded}"
+            f"&hl=id&gl=ID&ceid=ID:id"
+        )
+        resp = requests.get(rss_url, headers=headers, timeout=20)
+        if resp.status_code != 200:
+            logger.warning(f"[Google RSS] HTTP {resp.status_code} untuk '{keyword}'")
+            return hasil_lokal
+        feed  = feedparser.parse(resp.content)
+        count = 0
+        for entry in feed.entries:
+            if count >= max_per_keyword:
+                break
+            url_google = entry.get("link", "")
+            if not url_google:
                 continue
-            feed  = feedparser.parse(resp.content)
-            count = 0
-            for entry in feed.entries:
-                if count >= max_per_keyword:
-                    break
-                url_google = entry.get("link", "")
-                if not url_google:
-                    continue
-                url_asli = _resolve_google_news_url(url_google)
-                url = _normalisasi_url(url_asli)
-                judul = entry.get("title", "")
-                if " - " in judul:
-                    judul = judul.rsplit(" - ", 1)[0].strip()
-                tgl = _parse_tanggal(entry.get("published", ""))
-                lolos, tanggal_pasti = dalam_rentang_tanggal(tgl, tanggal_mulai, tanggal_selesai)
-                if url and lolos:
-                    hasil.append({
-                        "url":           url,
-                        "judul":         judul,
-                        "tanggal":       tgl,
-                        "tanggal_pasti": tanggal_pasti,
-                        "sumber":        entry.get("source", {}).get("title", ""),
-                        "sumber_search": "Google News RSS"
-                    })
-                    count += 1
-            time.sleep(0.5)
-        except Exception as e:
-            pesan_err = f"      [Google RSS] Error: {e}"
-            logger.warning(pesan_err)
-            if callback_log: callback_log(pesan_err)
-            time.sleep(1)
-            continue
+            url_asli = _resolve_google_news_url(url_google)
+            url = _normalisasi_url(url_asli)
+            judul = entry.get("title", "")
+            if " - " in judul:
+                judul = judul.rsplit(" - ", 1)[0].strip()
+            tgl = _parse_tanggal(entry.get("published", ""))
+            lolos, tanggal_pasti = dalam_rentang_tanggal(tgl, tanggal_mulai, tanggal_selesai)
+            if url and lolos:
+                hasil_lokal.append({
+                    "url":           url,
+                    "judul":         judul,
+                    "tanggal":       tgl,
+                    "tanggal_pasti": tanggal_pasti,
+                    "sumber":        entry.get("source", {}).get("title", ""),
+                    "sumber_search": "Google News RSS"
+                })
+                count += 1
+    except Exception as e:
+        pesan_err = f"      [Google RSS] Error '{keyword}': {e}"
+        logger.warning(pesan_err)
+        if callback_log: callback_log(pesan_err)
+    return hasil_lokal
+
+
+def cari_google_news_rss(
+    keywords: list[str],
+    tanggal_mulai: str,
+    tanggal_selesai: str,
+    max_per_keyword: int = 10,
+    callback_log=None
+) -> list[dict]:
+    """Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED. Dicari PARALEL antar keyword."""
+    hasil = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_SEARCH) as executor:
+        futures = [
+            executor.submit(
+                _cari_google_rss_satu_keyword, kw, tanggal_mulai, tanggal_selesai,
+                max_per_keyword, callback_log
+            )
+            for kw in keywords
+        ]
+        for future in as_completed(futures):
+            try:
+                hasil.extend(future.result())
+            except Exception as e:
+                logger.warning(f"[Google RSS] Worker gagal: {e}")
     logger.info(f"Google News RSS: {len(hasil)} artikel")
     return hasil
 
