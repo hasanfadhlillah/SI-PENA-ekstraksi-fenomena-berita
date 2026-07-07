@@ -623,20 +623,25 @@ st.markdown("""
 <style>
 div[data-testid="stRadio"] > div[role="radiogroup"] {
     flex-direction: row !important;
-    flex-wrap: wrap;
-    gap: 2px;
+    flex-wrap: nowrap !important;
+    gap: 4px;
     border-bottom: 2px solid rgba(130,130,130,0.25);
     margin-bottom: 1.2rem;
     padding-bottom: 0;
+    overflow-x: auto;
 }
 div[data-testid="stRadio"] > div[role="radiogroup"] > label {
     background: transparent;
-    padding: 6px 12px;
-    font-size: 14px;
+    padding: 6px 10px !important;
     margin: 0 !important;
     border-radius: 8px 8px 0 0;
     cursor: pointer;
     transition: background 0.15s;
+    white-space: nowrap !important;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
+    font-size: 13px !important;
+    margin: 0 !important;
 }
 div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
     background: rgba(74,108,247,0.08);
@@ -644,7 +649,9 @@ div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
 div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
     background: rgba(74,108,247,0.15);
     border-bottom: 3px solid #4a6cf7;
-    font-weight: 700;
+}
+div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) p {
+    font-weight: 700 !important;
 }
 div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
     display: none !important; 
