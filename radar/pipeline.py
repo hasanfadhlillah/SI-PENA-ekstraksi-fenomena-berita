@@ -119,7 +119,7 @@ def _jalankan_pipeline_satu_level(
         metadata_by_url=metadata_by_url,
         tanggal_mulai=tanggal_mulai,
         tanggal_selesai=tanggal_selesai,
-        max_workers=5,
+        max_workers=8,
     )
     if not artikel_scraped:
         _log("⚠️ Semua URL gagal di-scrape", level="warning")

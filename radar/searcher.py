@@ -259,13 +259,17 @@ def _cari_ddg_news_satu_keyword(
     tanggal_selesai: str,
     timelimit: str | None,
     max_per_keyword: int,
-    callback_log=None
 ) -> list[dict]:
-    """Worker: cari 1 keyword di DDG News, dengan retry sekali saat timeout."""
-    time.sleep(random.uniform(0.2, 0.8))   # jitter kecil, hindari burst serentak
-    pesan_log = f"      [DDG News] '{keyword}'..."
-    logger.debug(pesan_log)
-    if callback_log: callback_log(pesan_log)
+    """
+    Worker: cari 1 keyword di DDG News, dengan retry sekali saat timeout.
+    PENTING: fungsi ini jalan di THREAD WORKER (ThreadPoolExecutor).
+    JANGAN PERNAH memanggil callback_log (atau fungsi Streamlit apa pun) di sini —
+    Streamlit tidak thread-safe, dan pemanggilan st.* dari luar main thread bisa
+    merusak tampilan (elemen tab tercampur/salah taruh). Gunakan logger biasa saja
+    (logging Python aman dipanggil dari thread manapun).
+    """
+    time.sleep(random.uniform(0.2, 0.8))
+    logger.debug(f"      [DDG News] '{keyword}'...")
     hasil_lokal = []
     berita = []
     for percobaan in range(2):
@@ -279,14 +283,10 @@ def _cari_ddg_news_satu_keyword(
         except Exception as e:
             err = str(e).lower()
             if "timed out" in err and percobaan == 0:
-                pesan_retry = f"      [DDG News] Timeout, coba ulang sekali: '{keyword}'..."
-                logger.debug(pesan_retry)
-                if callback_log: callback_log(pesan_retry)
+                logger.debug(f"      [DDG News] Timeout, coba ulang sekali: '{keyword}'...")
                 time.sleep(2)
                 continue
-            pesan_err = f"      [DDG News] Error '{keyword}': {e}"
-            logger.warning(pesan_err)
-            if callback_log: callback_log(pesan_err)
+            logger.warning(f"      [DDG News] Error '{keyword}': {e}")
             break
     for item in berita:
         url = _normalisasi_url(item.get("url", ""))
@@ -311,22 +311,32 @@ def cari_duckduckgo_news(
     max_per_keyword: int = 8,
     callback_log=None
 ) -> list[dict]:
-    """Sumber 1: DuckDuckGo News. Gratis unlimited. Dicari PARALEL antar keyword."""
+    """
+    Sumber 1: DuckDuckGo News. Gratis unlimited. Dicari PARALEL antar keyword.
+    callback_log HANYA dipanggil di sini (main thread) setelah future selesai,
+    TIDAK PERNAH di dalam worker.
+    """
     hasil = []
     timelimit = _hitung_timelimit_ddgs(tanggal_selesai)
+    if callback_log:
+        callback_log(f"      [DDG News] Memindai {len(keywords)} keyword secara paralel...")
     with ThreadPoolExecutor(max_workers=MAX_WORKERS_SEARCH) as executor:
-        futures = [
+        futures = {
             executor.submit(
                 _cari_ddg_news_satu_keyword, kw, tanggal_mulai, tanggal_selesai,
-                timelimit, max_per_keyword, callback_log
-            )
+                timelimit, max_per_keyword
+            ): kw
             for kw in keywords
-        ]
+        }
         for future in as_completed(futures):
+            kw = futures[future]
             try:
-                hasil.extend(future.result())
+                hasil_kw = future.result()
+                hasil.extend(hasil_kw)
+                if callback_log:
+                    callback_log(f"      [DDG News] '{kw}' selesai — {len(hasil_kw)} hasil")
             except Exception as e:
-                logger.warning(f"[DDG News] Worker gagal: {e}")
+                logger.warning(f"[DDG News] Worker gagal untuk '{kw}': {e}")
     logger.info(f"DuckDuckGo News: {len(hasil)} artikel")
     return hasil
 
@@ -337,13 +347,13 @@ def _cari_google_rss_satu_keyword(
     tanggal_mulai: str,
     tanggal_selesai: str,
     max_per_keyword: int,
-    callback_log=None
 ) -> list[dict]:
-    """Worker: cari 1 keyword di Google News RSS dengan filter tanggal after:/before:."""
-    time.sleep(random.uniform(0.2, 0.8))   # jitter kecil, hindari burst serentak
-    pesan_log = f"      [Google RSS] '{keyword}' ({tanggal_mulai} s.d. {tanggal_selesai})..."
-    logger.debug(pesan_log)
-    if callback_log: callback_log(pesan_log)
+    """
+    Worker: cari 1 keyword di Google News RSS dengan filter tanggal after:/before:.
+    PENTING: sama seperti worker DDG di atas — TIDAK memanggil callback_log di sini.
+    """
+    time.sleep(random.uniform(0.2, 0.8))
+    logger.debug(f"      [Google RSS] '{keyword}' ({tanggal_mulai} s.d. {tanggal_selesai})...")
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -391,9 +401,7 @@ def _cari_google_rss_satu_keyword(
                 })
                 count += 1
     except Exception as e:
-        pesan_err = f"      [Google RSS] Error '{keyword}': {e}"
-        logger.warning(pesan_err)
-        if callback_log: callback_log(pesan_err)
+        logger.warning(f"      [Google RSS] Error '{keyword}': {e}")
     return hasil_lokal
 
 
@@ -404,21 +412,30 @@ def cari_google_news_rss(
     max_per_keyword: int = 10,
     callback_log=None
 ) -> list[dict]:
-    """Sumber 2: Google News RSS Feed. 100% GRATIS UNLIMITED. Dicari PARALEL antar keyword."""
+    """
+    Sumber 2: Google News RSS Feed. Dicari PARALEL antar keyword.
+    callback_log HANYA dipanggil di sini (main thread), tidak di dalam worker.
+    """
     hasil = []
+    if callback_log:
+        callback_log(f"      [Google RSS] Memindai {len(keywords)} keyword secara paralel...")
     with ThreadPoolExecutor(max_workers=MAX_WORKERS_SEARCH) as executor:
-        futures = [
+        futures = {
             executor.submit(
                 _cari_google_rss_satu_keyword, kw, tanggal_mulai, tanggal_selesai,
-                max_per_keyword, callback_log
-            )
+                max_per_keyword
+            ): kw
             for kw in keywords
-        ]
+        }
         for future in as_completed(futures):
+            kw = futures[future]
             try:
-                hasil.extend(future.result())
+                hasil_kw = future.result()
+                hasil.extend(hasil_kw)
+                if callback_log:
+                    callback_log(f"      [Google RSS] '{kw}' selesai — {len(hasil_kw)} hasil")
             except Exception as e:
-                logger.warning(f"[Google RSS] Worker gagal: {e}")
+                logger.warning(f"[Google RSS] Worker gagal untuk '{kw}': {e}")
     logger.info(f"Google News RSS: {len(hasil)} artikel")
     return hasil
 

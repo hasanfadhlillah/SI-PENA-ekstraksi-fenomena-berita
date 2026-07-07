@@ -355,3 +355,28 @@ def simpan_hasil_ekstraksi(url: str, json_final: dict):
         logger.error(f"[DB] Gagal simpan hasil ekstraksi untuk {url[:50]}: {e}")
     finally:
         conn.close()
+        
+def reset_total_database():
+    """
+    Menghapus SEMUA riwayat artikel, status kategori, dan hasil ekstraksi dari
+    database. Dipakai untuk mulai dari nol sama sekali. TIDAK BISA DIBATALKAN!
+    Struktur tabel (schema) tetap ada, hanya isinya yang dikosongkan.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM riwayat_artikel")
+    cursor.execute("DELETE FROM status_kategori")
+    cursor.execute("DELETE FROM hasil_ekstraksi")
+    try:
+        cursor.execute(
+            "DELETE FROM sqlite_sequence WHERE name IN "
+            "('riwayat_artikel', 'status_kategori', 'hasil_ekstraksi')"
+        )
+    except sqlite3.OperationalError:
+        pass  # tabel sqlite_sequence belum ada — aman diabaikan
+    conn.commit()
+    conn.close()
+    logger.warning(
+        "[Database] RESET TOTAL dilakukan — seluruh riwayat, status kategori, "
+        "dan hasil ekstraksi dihapus."
+    )

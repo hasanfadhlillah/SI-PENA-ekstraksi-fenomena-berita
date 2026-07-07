@@ -20,7 +20,8 @@ from radar.database import (
     tandai_artikel_diekstrak,
     tandai_artikel_ditolak,
     simpan_hasil_ekstraksi,
-    get_connection
+    get_connection,
+    reset_total_database,
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
 from radar.config import DEFAULT_MIN_SKOR
@@ -29,6 +30,7 @@ from radar.backup import (
     buat_backup_database_bytes,
     pulihkan_keywords_dari_upload,
     auto_restore_dari_hf_dataset,
+    force_backup_ke_hf_dataset,
 )
 from scraper import scrape_berita
 from ai_engine import ekstrak_fenomena_ai
@@ -513,7 +515,7 @@ with st.sidebar:
     st.markdown("---")
 
     # Backup & Restore (jaring pengaman ephemeral storage HF Spaces)
-    with st.expander("💾 Backup & Restore Data (Penting!)", expanded=False):
+    with st.expander("💾 Backup & Restore Data", expanded=False):
         st.caption(
             "⚠️ Aplikasi ini di-deploy di Hugging Face Spaces (tier gratis) yang "
             "TIDAK menyimpan data secara permanen — setiap kali Space di-restart "
@@ -564,6 +566,34 @@ with st.sidebar:
 
         _hf_token_ada = bool(os.environ.get("HF_TOKEN", ""))
         _hf_repo_ada  = bool(os.environ.get("HF_BACKUP_REPO_ID", ""))
+        
+        st.markdown("---")
+        st.markdown("**🗑️ Reset Total (Hapus SEMUA Riwayat & Mulai dari Nol)**")
+        st.caption(
+            "⚠️ **PERINGATAN:** Ini akan menghapus SELURUH riwayat artikel, "
+            "status kategori, dan hasil ekstraksi dari database — TIDAK BISA DIBATALKAN. "
+            "Jika auto-backup HF Dataset aktif, backup lama juga langsung ditimpa "
+            "dengan versi kosong supaya tidak ke-restore lagi saat Space restart."
+        )
+        konfirmasi_reset = st.text_input(
+            "Ketik **HAPUS SEMUA** (persis, huruf besar) untuk mengaktifkan tombol reset:",
+            key="input_konfirmasi_reset"
+        )
+        if st.button("🗑️ RESET TOTAL — Hapus Semua Riwayat",
+                     type="secondary", width='stretch',
+                     disabled=(konfirmasi_reset != "HAPUS SEMUA"),
+                     key="btn_reset_total"):
+            reset_total_database()
+            berhasil_force_backup = force_backup_ke_hf_dataset()
+            st.session_state.kategori_terpilih_antrean = "— Pilih Kategori —"
+            if berhasil_force_backup:
+                st.success("✅ Reset total berhasil! Database kosong & backup HF Dataset sudah ditimpa dengan versi kosong.")
+            else:
+                st.success("✅ Reset total berhasil! Database sekarang kosong.")
+                st.info("ℹ️ Auto-backup HF Dataset tidak aktif/gagal — tidak ada backup lama yang perlu ditimpa.")
+            time.sleep(2)
+            st.rerun()
+        
         if _hf_token_ada and _hf_repo_ada:
             st.success(
                 "🟢 Auto-backup & Auto-restore ke HF Dataset AKTIF — data otomatis "
@@ -573,9 +603,9 @@ with st.sidebar:
         else:
             st.info(
                 "🔴 Auto-backup ke HF Dataset belum aktif. Set secret `HF_TOKEN` dan "
-                "`HF_BACKUP_REPO_ID` di Settings Space untuk mengaktifkan backup "
-                "otomatis gratis (opsional — lihat radar/backup.py untuk panduan)."
+                "`HF_BACKUP_REPO_ID` di Settings Space untuk mengaktifkan backup otomatis gratis."
             )
+        
 
     st.markdown("---")
     st.caption("v1.0 | Made with ❤️ for BPS Kota Magelang")
@@ -594,9 +624,10 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 # TAB 1: RADAR PDRB
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab1:
-    with st.expander("📖 Panduan Penggunaan Tab Radar", expanded=False):
+    with st.expander("📖 Panduan Penggunaan Tab Radar Berita", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Tempat Anda memantau dan memburu berita fenomena ekonomi secara otomatis dari internet.
+        0. **⚙️ Atur Dahulu di Sidebar (WAJIB sebelum SCAN):** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
         1. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
         2. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
         3. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
@@ -736,9 +767,7 @@ with tab1:
                             log_lines     = []
                             def cb_log(pesan: str):
                                 log_lines.append(pesan)
-                                log_container.markdown(
-                                    "\n".join([f"`{l}`" for l in log_lines[-12:]])
-                                )
+                                log_container.code("\n".join(log_lines[-12:]), language=None)
                             hasil = scan_kategori(
                                 pilihan_kategori, mulai_str, selesai_str,
                                 min_skor=min_skor,
@@ -900,7 +929,7 @@ with tab1:
 # TAB 2: EKSTRAKTOR FENOMENA
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab2:
-    with st.expander("📖 Panduan Penggunaan Tab Ekstraktor", expanded=False):
+    with st.expander("📖 Panduan Penggunaan Tab Ekstraktor Fenomena", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Meja operasi AI untuk membedah artikel.
         1. **Mulai Ekstrak:** Tekan tombol untuk memerintahkan AI membaca artikel dan memecahnya menjadi 12 poin penting.
@@ -1117,7 +1146,7 @@ with tab2:
 # TAB 3: HISTORY BERITA
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab3:
-    with st.expander("📖 Panduan Penggunaan Tab History", expanded=False):
+    with st.expander("📖 Panduan Penggunaan Tab History Berita", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Pusat arsip dan ekspor data SI-PENA.
         1. **Tabel Riwayat Radar:** Semua artikel yang pernah ditemukan & disaring Radar, lengkap dengan skor AI dan statusnya.

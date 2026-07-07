@@ -202,3 +202,47 @@ def auto_restore_dari_hf_dataset():
 
     except Exception as e:
         logger.warning(f"Auto-restore dari HF Dataset gagal total (diabaikan): {e}")
+      
+        
+def force_backup_ke_hf_dataset() -> bool:
+    """
+    Backup paksa ke HF Dataset, MENGABAIKAN jeda minimal 5 menit.
+    Dipakai khusus setelah reset total, supaya versi kosong SEGERA
+    menimpa backup lama di HF Dataset (agar tidak ke-restore lagi saat restart).
+    Return True jika berhasil, False jika gagal atau kredensial belum diset.
+    """
+    global _last_backup_waktu
+
+    if not _HF_TOKEN or not _HF_BACKUP_REPO_ID:
+        logger.debug("Force-backup dilewati (HF_TOKEN/HF_BACKUP_REPO_ID belum diset).")
+        return False
+
+    try:
+        from huggingface_hub import HfApi
+        api = HfApi(token=_HF_TOKEN)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        keywords_bytes = buat_backup_keywords_bytes()
+        db_bytes = buat_backup_database_bytes()
+
+        api.upload_file(
+            path_or_fileobj=io.BytesIO(keywords_bytes),
+            path_in_repo="keywords.json",
+            repo_id=_HF_BACKUP_REPO_ID,
+            repo_type="dataset",
+            commit_message=f"FORCE backup (reset total) keywords.json — {timestamp}",
+        )
+        if db_bytes:
+            api.upload_file(
+                path_or_fileobj=io.BytesIO(db_bytes),
+                path_in_repo="sifeno_tracker.db",
+                repo_id=_HF_BACKUP_REPO_ID,
+                repo_type="dataset",
+                commit_message=f"FORCE backup (reset total) sifeno_tracker.db — {timestamp}",
+            )
+        _last_backup_waktu = datetime.now()
+        logger.warning(f"Force-backup (reset total) ke HF Dataset '{_HF_BACKUP_REPO_ID}' berhasil ({timestamp}).")
+        return True
+    except Exception as e:
+        logger.error(f"Force-backup ke HF Dataset gagal: {e}")
+        return False
