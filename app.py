@@ -583,7 +583,7 @@ with st.sidebar:
         st.markdown("**🗑️ Reset Total**")
         st.caption(
             "⚠️ **PERINGATAN:** Ini akan menghapus SELURUH riwayat artikel, "
-            "status kategori, dan hasil ekstraksi dari database — TIDAK BISA DIBATALKAN. "
+            "status kategori, dan hasil ekstraksi dari database (Mulai dari 0) — TIDAK BISA DIBATALKAN. "
             "Jika auto-backup HF Dataset aktif, backup lama juga langsung ditimpa "
             "dengan versi kosong supaya tidak ke-restore lagi saat Space restart."
         )
@@ -591,7 +591,7 @@ with st.sidebar:
             "Ketik **HAPUS SEMUA** (persis, huruf besar) untuk mengaktifkan tombol reset:",
             key="input_konfirmasi_reset"
         )
-        if st.button("🗑️ RESET TOTAL — Hapus Semua Riwayat",
+        if st.button("🗑️ RESET TOTAL",
                      type="secondary", width='stretch',
                      disabled=(konfirmasi_reset != "HAPUS SEMUA"),
                      key="btn_reset_total"):
@@ -624,14 +624,15 @@ st.markdown("""
 div[data-testid="stRadio"] > div[role="radiogroup"] {
     flex-direction: row !important;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 2px;
     border-bottom: 2px solid rgba(130,130,130,0.25);
     margin-bottom: 1.2rem;
     padding-bottom: 0;
 }
 div[data-testid="stRadio"] > div[role="radiogroup"] > label {
     background: transparent;
-    padding: 10px 16px;
+    padding: 6px 12px;
+    font-size: 14px;
     margin: 0 !important;
     border-radius: 8px 8px 0 0;
     cursor: pointer;
@@ -645,7 +646,12 @@ div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
     border-bottom: 3px solid #4a6cf7;
     font-weight: 700;
 }
-div[data-testid="stRadio"] svg { display: none; }
+div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+    display: none !important; 
+}
+div[data-testid="stRadio"] svg { 
+    display: none !important; 
+}
 </style>
 """, unsafe_allow_html=True)
 
