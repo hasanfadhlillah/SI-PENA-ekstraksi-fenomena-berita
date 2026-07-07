@@ -567,8 +567,20 @@ with st.sidebar:
         _hf_token_ada = bool(os.environ.get("HF_TOKEN", ""))
         _hf_repo_ada  = bool(os.environ.get("HF_BACKUP_REPO_ID", ""))
         
+        if _hf_token_ada and _hf_repo_ada:
+            st.success(
+                "🟢 Auto-backup & Auto-restore ke HF Dataset AKTIF — data otomatis "
+                "tersimpan tiap kategori selesai discan, dan otomatis dipulihkan "
+                "kalau Space baru saja restart."
+            )
+        else:
+            st.info(
+                "🔴 Auto-backup ke HF Dataset belum aktif. Set secret `HF_TOKEN` dan "
+                "`HF_BACKUP_REPO_ID` di Settings Space untuk mengaktifkan backup otomatis gratis."
+            )
+        
         st.markdown("---")
-        st.markdown("**🗑️ Reset Total (Hapus SEMUA Riwayat & Mulai dari Nol)**")
+        st.markdown("**🗑️ Reset Total**")
         st.caption(
             "⚠️ **PERINGATAN:** Ini akan menghapus SELURUH riwayat artikel, "
             "status kategori, dan hasil ekstraksi dari database — TIDAK BISA DIBATALKAN. "
@@ -594,19 +606,6 @@ with st.sidebar:
             time.sleep(2)
             st.rerun()
         
-        if _hf_token_ada and _hf_repo_ada:
-            st.success(
-                "🟢 Auto-backup & Auto-restore ke HF Dataset AKTIF — data otomatis "
-                "tersimpan tiap kategori selesai discan, dan otomatis dipulihkan "
-                "kalau Space baru saja restart."
-            )
-        else:
-            st.info(
-                "🔴 Auto-backup ke HF Dataset belum aktif. Set secret `HF_TOKEN` dan "
-                "`HF_BACKUP_REPO_ID` di Settings Space untuk mengaktifkan backup otomatis gratis."
-            )
-        
-
     st.markdown("---")
     st.caption("v1.0 | Made with ❤️ for BPS Kota Magelang")
 
@@ -627,10 +626,10 @@ with tab1:
     with st.expander("📖 Panduan Penggunaan Tab Radar Berita", expanded=False):
         st.markdown("""
         **Fungsi Tab Ini:** Tempat Anda memantau dan memburu berita fenomena ekonomi secara otomatis dari internet.
-        0. **⚙️ Atur Dahulu di Sidebar (WAJIB sebelum SCAN):** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
-        1. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
-        2. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
-        3. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
+        1. **⚙️ Atur Dahulu di Sidebar (WAJIB sebelum SCAN):** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
+        2. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
+        3. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
+        4. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
         """)
 
     # ── [BARU] CHANGE 1: Kriteria & Sistem Skoring ────────────────────────────
