@@ -24,6 +24,8 @@ from radar.database import (
     reset_total_database,
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
+from radar.scan_manager import buat_job, tambah_log, set_selesai, set_error, ambil_job, hapus_job
+import threading
 from radar.config import DEFAULT_MIN_SKOR
 from radar.backup import (
     buat_backup_keywords_bytes,
@@ -456,6 +458,8 @@ for key, default in [
     ("kategori_terpilih_antrean", "— Pilih Kategori —"),
     ("backup_keywords_bytes", None),
     ("backup_db_bytes", None),
+    ("job_id_scan", None),
+    ("job_kategori_scan", None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -512,6 +516,10 @@ with st.sidebar:
         jumlah = _hitung_kunci(key_val)
         status = f"🟢 {jumlah} Amunisi Siap" if jumlah > 0 else "🔴 Kosong"
         st.caption(f"**{nama}:** {status}")
+    st.markdown("---")
+    _job_sidebar = ambil_job(st.session_state.job_id_scan) if st.session_state.job_id_scan else None
+    if _job_sidebar and _job_sidebar["status"] == "berjalan":
+        st.info(f"🔄 **Scan sedang berjalan:**\n\n{st.session_state.job_kategori_scan}\n\nBebas pindah tab, proses tetap lanjut.")
     st.markdown("---")
 
     # Backup & Restore (jaring pengaman ephemeral storage HF Spaces)
@@ -752,9 +760,40 @@ if tab_aktif == TAB_LABELS[0]:
 
     st.markdown("## 📡 Radar Pencari Berita Fenomena")
 
-    # BAGIAN A: JALANKAN RADAR
+    # BAGIAN A: JALANKAN RADAR — proses scan berjalan di BACKGROUND THREAD
+    def _jalankan_scan_background(job_id, mode, **kwargs):
+        """Dijalankan di thread terpisah. TIDAK BOLEH memanggil st.* apa pun."""
+        def cb_log(pesan: str):
+            tambah_log(job_id, pesan)
+        try:
+            if mode == "single":
+                hasil = scan_kategori(
+                    kwargs["pilihan_kategori"], kwargs["mulai_str"], kwargs["selesai_str"],
+                    min_skor=kwargs["min_skor"],
+                    paksa_proses_ulang=kwargs["paksa_ulang"],
+                    scan_semua_level=True,
+                    aktifkan_fallback=True,
+                    callback_log=cb_log,
+                )
+            else:
+                def cb_progress(kat, idx, total):
+                    tambah_log(job_id, f"🔄 [{idx}/{total}] Memindai: {kat}...")
+                hasil = batch_scan_semua_kategori(
+                    kwargs["daftar_kategori"], kwargs["mulai_str"], kwargs["selesai_str"],
+                    min_skor=kwargs["min_skor"], paksa_proses_ulang=kwargs["paksa_ulang"],
+                    scan_semua_level=kwargs["scan_semua"],
+                    callback_progress=cb_progress,
+                )
+            set_selesai(job_id, hasil)
+        except Exception as e:
+            set_error(job_id, str(e))
+
     with st.container(border=True):
         st.markdown("#### 🚀 Jalankan Radar")
+
+        job_aktif = ambil_job(st.session_state.job_id_scan) if st.session_state.job_id_scan else None
+        sedang_berjalan = job_aktif is not None and job_aktif["status"] == "berjalan"
+
         col_kat, col_btn = st.columns([4, 1])
         with col_kat:
             pilihan_kategori = st.selectbox(
@@ -762,13 +801,18 @@ if tab_aktif == TAB_LABELS[0]:
                 ["✨ SEMUA KATEGORI (BATCH SCAN)"] + DAFTAR_KATEGORI,
                 label_visibility="collapsed",
                 help="Pilih 1 kategori untuk discan cepat, atau pilih BATCH SCAN untuk memproses semua kategori sekaligus.",
-                key="selectbox_pilihan_kategori"
+                key="selectbox_pilihan_kategori",
+                disabled=sedang_berjalan,
             )
         with col_btn:
-            btn_scan = st.button("▶ SCAN", type="primary", width='stretch',
-                                help="Mulai pencarian dan filter AI.", key="btn_scan_radar")
+            btn_scan = st.button(
+                "⏳ Berjalan..." if sedang_berjalan else "▶ SCAN",
+                type="primary", width='stretch',
+                help="Mulai pencarian dan filter AI.", key="btn_scan_radar",
+                disabled=sedang_berjalan,
+            )
 
-        if btn_scan:
+        if btn_scan and not sedang_berjalan:
             if tanggal_mulai > tanggal_selesai:
                 st.error("Perbaiki rentang tanggal di sidebar terlebih dahulu.")
             else:
@@ -780,79 +824,82 @@ if tab_aktif == TAB_LABELS[0]:
                     st.error(f"⚠️ {e}")
                     st.stop()
 
+                job_id = buat_job()
+                st.session_state.job_id_scan = job_id
+                st.session_state.job_kategori_scan = pilihan_kategori
+
                 if pilihan_kategori == "✨ SEMUA KATEGORI (BATCH SCAN)":
-                    prog   = st.progress(0)
-                    status = st.empty()
-                    def cb_progress(kat, idx, total):
-                        prog.progress(idx / total)
-                        status.info(f"🔄 [{idx}/{total}] Memindai: **{kat}**...")
-                    with st.spinner("Memulai Batch Scan — mohon tunggu, Anda bisa minum kopi dulu ☕..."):
-                        hasil_batch = batch_scan_semua_kategori(
-                            DAFTAR_KATEGORI, mulai_str, selesai_str,
-                            min_skor=min_skor, paksa_proses_ulang=paksa_ulang,
-                            scan_semua_level=scan_semua,
-                            callback_progress=cb_progress
-                        )
-                    prog.empty(); status.empty()
-                    r = hasil_batch["ringkasan"]
+                    t = threading.Thread(
+                        target=_jalankan_scan_background,
+                        args=(job_id, "batch"),
+                        kwargs=dict(
+                            daftar_kategori=DAFTAR_KATEGORI, mulai_str=mulai_str, selesai_str=selesai_str,
+                            min_skor=min_skor, paksa_ulang=paksa_ulang, scan_semua=scan_semua,
+                        ),
+                        daemon=True,
+                    )
+                else:
+                    t = threading.Thread(
+                        target=_jalankan_scan_background,
+                        args=(job_id, "single"),
+                        kwargs=dict(
+                            pilihan_kategori=pilihan_kategori, mulai_str=mulai_str, selesai_str=selesai_str,
+                            min_skor=min_skor, paksa_ulang=paksa_ulang,
+                        ),
+                        daemon=True,
+                    )
+                t.start()
+                st.rerun()
+
+        # ── Tampilkan status/log job yang sedang berjalan atau baru selesai ──
+        if job_aktif is not None:
+            if job_aktif["status"] == "berjalan":
+                with st.status(
+                    f"📡 Radar memindai: **{st.session_state.job_kategori_scan}**...", expanded=True
+                ):
+                    log_lines = job_aktif["log"]
+                    teks_log = "\n".join(log_lines[-10:]) if log_lines else "Memulai pencarian..."
+                    st.markdown(f"""
+                    <div style="
+                        background-color: #f7f9fa;
+                        border: 1px solid rgba(130,130,130,0.2);
+                        border-radius: 8px;
+                        padding: 10px 12px;
+                        font-family: 'Courier New', Courier, monospace;
+                        font-size: 12px;
+                        color: #333;
+                        line-height: 1.4;
+                        height: 160px;
+                        overflow: hidden;
+                        white-space: pre-wrap;
+                    ">{teks_log}</div>
+                    """, unsafe_allow_html=True)
+                    
+                st.caption(
+                    "💡 Proses ini berjalan di latar belakang — Anda bebas berpindah tab atau "
+                    "menjelajahi fitur lain, scan akan tetap lanjut sampai selesai."
+                )
+                time.sleep(1.5)
+                st.rerun()
+
+            elif job_aktif["status"] == "selesai":
+                hasil = job_aktif["hasil"]
+                with st.expander("📋 Log Lengkap Proses Scan", expanded=False):
+                    st.code("\n".join(job_aktif["log"]), language=None)
+
+                if st.session_state.job_kategori_scan == "✨ SEMUA KATEGORI (BATCH SCAN)":
+                    r = hasil["ringkasan"]
                     st.success(
                         f"✅ Batch Scan Selesai! Berita ditemukan di **{r['sukses']} kategori** "
                         f"({r['persen_sukses']}%). Silakan cek tabel antrean di bawah."
                     )
-                    time.sleep(2)
-                    st.rerun()
                 else:
-                    hasil = {}
-                    with st.status(
-                        f"📡 Radar memindai: **{pilihan_kategori}**...", expanded=True
-                    ) as status_box:
-                        
-                        log_container = st.empty()
-                        log_lines = []
-                        def cb_log(pesan: str):
-                            log_lines.append(pesan)
-                            teks_log = "\n".join(log_lines[-10:])
-                            log_container.markdown(f"""
-                            <div style="
-                                background-color: #f7f9fa;
-                                border: 1px solid rgba(130,130,130,0.2);
-                                border-radius: 8px;
-                                padding: 10px 12px;
-                                font-family: 'Courier New', Courier, monospace;
-                                font-size: 12px;
-                                color: #333;
-                                line-height: 1.4;
-                                height: 160px;
-                                overflow: hidden;
-                                white-space: pre-wrap;
-                            ">{teks_log}</div>
-                            """, unsafe_allow_html=True)
-                            
-                        hasil = scan_kategori(
-                            pilihan_kategori, mulai_str, selesai_str,
-                            min_skor=min_skor,
-                            paksa_proses_ulang=paksa_ulang,
-                            scan_semua_level=True,
-                            aktifkan_fallback=True,
-                            callback_log=cb_log,
-                        )
-                        if hasil["status"] == "sukses":
-                            status_box.update(
-                                label=f"✅ Ditemukan {hasil['jumlah_valid']} artikel valid!",
-                                state="complete"
-                            )
-                        else:
-                            status_box.update(
-                                label="❌ Tidak ada berita ditemukan.",
-                                state="error"
-                            )
-
                     if hasil["status"] == "sukses":
                         st.success(
                             f"✅ Ditemukan **{hasil['jumlah_valid']} artikel** valid! "
                             f"Mengarahkan ke antrean..."
                         )
-                        st.session_state.kategori_terpilih_antrean = pilihan_kategori
+                        st.session_state.kategori_terpilih_antrean = st.session_state.job_kategori_scan
                     else:
                         st.error(hasil.get("pesan_utama", "Tidak ada berita ditemukan."))
                         with st.expander("💡 Saran Keyword Manual dari AI"):
@@ -861,7 +908,19 @@ if tab_aktif == TAB_LABELS[0]:
                             st.markdown("**Coba cari manual di sumber berikut:**")
                             for s in hasil.get("saran_sumber", []):
                                 st.markdown(f"- [{s}](https://{s})")
-                    time.sleep(1.5)
+
+                if st.button("✖️ Tutup Hasil Ini", key="btn_tutup_hasil_scan"):
+                    hapus_job(st.session_state.job_id_scan)
+                    st.session_state.job_id_scan = None
+                    st.session_state.job_kategori_scan = None
+                    st.rerun()
+
+            elif job_aktif["status"] == "error":
+                st.error(f"❌ Terjadi kesalahan saat scan: {job_aktif['pesan_error']}")
+                if st.button("✖️ Tutup", key="btn_tutup_error_scan"):
+                    hapus_job(st.session_state.job_id_scan)
+                    st.session_state.job_id_scan = None
+                    st.session_state.job_kategori_scan = None
                     st.rerun()
 
     st.markdown("---")
@@ -962,15 +1021,19 @@ if tab_aktif == TAB_LABELS[0]:
                         <div class="alasan-box">💬 {art['alasan_ai']}</div>
                     </div>
                     """, unsafe_allow_html=True)
+                    _sedang_scan = st.session_state.job_id_scan is not None and \
+                        (ambil_job(st.session_state.job_id_scan) or {}).get("status") == "berjalan"
                     ca, cb, cc = st.columns([2, 2, 8])
                     with ca:
                         if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",
-                                    type="primary", help="Membawa artikel ini ke Tab 2."):
+                                     type="primary", help="Membawa artikel ini ke Tab 2.",
+                                     disabled=_sedang_scan):
                             st.session_state.target_url = art["url_berita"]
                             st.toast("Berita dikirim! Silakan buka Tab Ekstraktor.", icon="🚀")
                     with cb:
                         if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}",
-                                    help="Buang artikel ini dari antrean."):
+                                     help="Buang artikel ini dari antrean.",
+                                     disabled=_sedang_scan):
                             tandai_artikel_ditolak(art["url_berita"])
                             st.toast("Artikel dibuang ke tempat sampah.", icon="🗑️")
                             time.sleep(0.5)
