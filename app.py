@@ -508,6 +508,9 @@ with st.sidebar:
                                  "5 level wilayah secara penuh, tidak terpengaruh toggle ini.",
                             key="toggle_scan_semua")
 
+    _job_sidebar = ambil_job(st.session_state.job_id_scan) if st.session_state.job_id_scan else None
+    if _job_sidebar and _job_sidebar["status"] == "berjalan":
+        st.info(f"🔄 **Scan sedang berjalan:**\n\n{st.session_state.job_kategori_scan}.")
     st.markdown("---")
     st.markdown("### 🚦 Status Pasukan AI (Pool)")
     st.caption("Aplikasi ini menggunakan sistem Load Balancing. AI akan otomatis berganti kunci jika terjadi limit.")
@@ -516,10 +519,6 @@ with st.sidebar:
         jumlah = _hitung_kunci(key_val)
         status = f"🟢 {jumlah} Amunisi Siap" if jumlah > 0 else "🔴 Kosong"
         st.caption(f"**{nama}:** {status}")
-    st.markdown("---")
-    _job_sidebar = ambil_job(st.session_state.job_id_scan) if st.session_state.job_id_scan else None
-    if _job_sidebar and _job_sidebar["status"] == "berjalan":
-        st.info(f"🔄 **Scan sedang berjalan:**\n\n{st.session_state.job_kategori_scan}\n\nBebas pindah tab, proses tetap lanjut.")
     st.markdown("---")
 
     # Backup & Restore (jaring pengaman ephemeral storage HF Spaces)
@@ -854,33 +853,49 @@ if tab_aktif == TAB_LABELS[0]:
         # ── Tampilkan status/log job yang sedang berjalan atau baru selesai ──
         if job_aktif is not None:
             if job_aktif["status"] == "berjalan":
-                with st.status(
-                    f"📡 Radar memindai: **{st.session_state.job_kategori_scan}**...", expanded=True
-                ):
-                    log_lines = job_aktif["log"]
-                    teks_log = "\n".join(log_lines[-10:]) if log_lines else "Memulai pencarian..."
-                    st.markdown(f"""
-                    <div style="
-                        background-color: #f7f9fa;
-                        border: 1px solid rgba(130,130,130,0.2);
-                        border-radius: 8px;
-                        padding: 10px 12px;
-                        font-family: 'Courier New', Courier, monospace;
-                        font-size: 12px;
-                        color: #333;
-                        line-height: 1.4;
-                        height: 160px;
-                        overflow: hidden;
-                        white-space: pre-wrap;
-                    ">{teks_log}</div>
-                    """, unsafe_allow_html=True)
+                
+                # Menggunakan fitur fragment agar hanya blok ini yang refresh mandiri
+                @st.fragment(run_every=1.5)
+                def _pantau_live_log():
+                    # Ambil data log terbaru dari background thread
+                    _job_terbaru = ambil_job(st.session_state.job_id_scan)
                     
-                st.caption(
-                    "💡 Proses ini berjalan di latar belakang — Anda bebas berpindah tab atau "
-                    "menjelajahi fitur lain, scan akan tetap lanjut sampai selesai."
-                )
-                time.sleep(1.5)
-                st.rerun()
+                    # Jika job hilang (direset), refresh seluruh halaman
+                    if not _job_terbaru:
+                        st.rerun()
+                        return
+                    
+                    if _job_terbaru["status"] == "berjalan":
+                        with st.status(
+                            f"📡 Radar memindai: **{st.session_state.job_kategori_scan}**...", expanded=True
+                        ):
+                            log_lines = _job_terbaru["log"]
+                            teks_log = "\n".join(log_lines[-10:]) if log_lines else "Memulai pencarian..."
+                            
+                            st.markdown(f"""
+                            <div style="
+                                background-color: #f7f9fa;
+                                border: 1px solid rgba(130,130,130,0.2);
+                                border-radius: 8px;
+                                padding: 10px 12px;
+                                font-family: 'Courier New', Courier, monospace;
+                                font-size: 12px;
+                                color: #333;
+                                line-height: 1.4;
+                                height: 160px;
+                                overflow: hidden;
+                                white-space: pre-wrap;
+                            ">{teks_log}</div>
+                            """, unsafe_allow_html=True)
+                            
+                        st.caption(
+                            "💡 Proses ini berjalan di latar belakang."
+                        )
+                    else:
+                        # Jika status berubah jadi selesai/error, pancing rerun utama agar masuk ke blok 'elif' di bawah
+                        st.rerun()
+
+                _pantau_live_log()
 
             elif job_aktif["status"] == "selesai":
                 hasil = job_aktif["hasil"]
