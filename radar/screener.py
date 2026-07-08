@@ -351,7 +351,7 @@ def screening_batch(
     wilayah: str,
     min_skor: int = DEFAULT_MIN_SKOR,
     jeda_detik: float = 1.0,
-    max_artikel: int = 25,
+    max_artikel: int = 35,
     target_minimal: int | None = None,
     callback_log=None,
 ) -> tuple[list[dict], list[dict]]:

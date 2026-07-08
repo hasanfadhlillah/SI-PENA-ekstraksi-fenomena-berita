@@ -16,7 +16,7 @@ from .fetcher        import fetch_parallel
 from .screener       import screening_batch
 from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya,
                              buat_pesan_anti_buntu, siapkan_keyword_fallback)
-from .config         import DEFAULT_MIN_SKOR
+from .config         import DEFAULT_MIN_SKOR, DEFAULT_TARGET_MINIMAL
 from .logger_config  import get_logger
 from .backup         import auto_backup_ke_hf_dataset
 
@@ -60,7 +60,7 @@ def _jalankan_pipeline_satu_level(
     triwulan: str,
     min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
-    target_minimal: int = 3,
+    target_minimal: int = DEFAULT_TARGET_MINIMAL,
     callback_log=None,
 ) -> list[dict]:
     """
@@ -168,7 +168,7 @@ def scan_kategori(
     aktifkan_fallback: bool = True,
     paksa_proses_ulang: bool = False,
     scan_semua_level: bool = True,
-    target_minimal: int = 3,
+    target_minimal: int = DEFAULT_TARGET_MINIMAL,
     callback_log=None,
 ) -> dict:
     """
@@ -271,7 +271,7 @@ def batch_scan_semua_kategori(
     min_skor: int = DEFAULT_MIN_SKOR,
     paksa_proses_ulang: bool = False,
     scan_semua_level: bool = False,
-    target_minimal: int = 3,
+    target_minimal: int = DEFAULT_TARGET_MINIMAL,
     callback_progress=None
 ) -> dict:
     """

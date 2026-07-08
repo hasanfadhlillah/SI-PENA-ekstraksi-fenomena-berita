@@ -9,14 +9,13 @@ import base64
 import random 
 import requests
 import feedparser
+from dateutil import parser as dateparser
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ddgs import DDGS
 from .logger_config import get_logger
-
 logger = get_logger(__name__)
-
-MAX_WORKERS_SEARCH = 5
+MAX_WORKERS_SEARCH = 8
 
 
 # ─── HELPER ────────────────────────────────────────────────────────────────────
@@ -68,9 +67,19 @@ def _resolve_google_news_url(google_url: str) -> str:
 
 
 def _parse_tanggal(tanggal_str: str) -> str:
-    """Normalisasi berbagai format tanggal ke YYYY-MM-DD."""
+    """
+    Normalisasi tanggal ke YYYY-MM-DD.
+    Memakai `dateutil` untuk akurasi zona waktu agar artikel salah tanggal tidak lolos scraping.
+    """
     if not tanggal_str:
         return ""
+    tanggal_str = tanggal_str.strip()
+    try:
+        dt = dateparser.parse(tanggal_str)
+        if dt is not None:
+            return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
     for fmt in [
         "%a, %d %b %Y %H:%M:%S %z",
         "%a, %d %b %Y %H:%M:%S %Z",
@@ -86,6 +95,11 @@ def _parse_tanggal(tanggal_str: str) -> str:
 
 
 def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
+    """
+    Menentukan parameter timelimit untuk ddgs.news().
+    Hanya mendukung "d", "w", "m". Jika >90 hari kembalikan None 
+    (jangan gunakan "y" karena invalid dan akan merusak filter pencarian DDG).
+    """
     try:
         dt_selesai = datetime.strptime(tanggal_selesai, "%Y-%m-%d")
     except Exception:
@@ -99,8 +113,6 @@ def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
         return "w"
     elif jarak_hari <= 90:
         return "m"
-    elif jarak_hari <= 365:
-        return "y"
     return None
 
 
@@ -308,7 +320,7 @@ def cari_duckduckgo_news(
     keywords: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 8,
+    max_per_keyword: int = 12,
     callback_log=None
 ) -> list[dict]:
     """
@@ -409,7 +421,7 @@ def cari_google_news_rss(
     keywords: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 10,
+    max_per_keyword: int = 15,
     callback_log=None
 ) -> list[dict]:
     """
@@ -445,20 +457,19 @@ def cari_duckduckgo_web(
     keywords: list[str],
     tanggal_mulai: str,
     tanggal_selesai: str,
-    max_per_keyword: int = 5,
+    max_per_keyword: int = 8,
     callback_log=None
 ) -> list[dict]:
-    """Sumber 3: DDG Web Search. Fallback jika News+RSS < 5 artikel."""
+    """Sumber 3: DDG Web Search. Fallback jika News+RSS hasilnya masih tipis."""
     hasil = []
     tahun = tanggal_mulai[:4]
     try:
         with DDGS() as ddgs:
-            for keyword in keywords[:3]:
+            for keyword in keywords[:6]:   # <-- naik dari keywords[:3] -> keywords[:6]
                 keyword_tahun = f"{keyword} {tahun}"
                 pesan_log = f"      [DDG Web] '{keyword_tahun}'..."
                 logger.debug(pesan_log)
                 if callback_log: callback_log(pesan_log)
-
                 try:
                     web_results = list(ddgs.text(
                         keyword_tahun,
@@ -501,38 +512,29 @@ def cari_berita_multi_sumber(
     keywords = keywords_per_wilayah.get(wilayah, [])
     if not keywords:
         return []
-
     if label_tampilan:
         tampilan = label_tampilan.upper()
     else:
         tampilan = "KOTA MAGELANG" if wilayah == "magelang" else wilayah.upper()
-
     pesan_header = f"📡 Mencari di wilayah: {tampilan} ({len(keywords)} keyword) \n📅 Rentang: {tanggal_mulai} s.d. {tanggal_selesai}"
     logger.info(pesan_header.replace("\n", " | "))
     if callback_log: callback_log(pesan_header)
-
     hasil_ddg = cari_duckduckgo_news(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
     hasil_rss = cari_google_news_rss(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
-
     gabungan = _deduplikasi(hasil_ddg + hasil_rss)
     gabungan = _deduplikasi_judul(gabungan)
     gabungan = _buang_homepage(gabungan, callback_log=callback_log)
     gabungan = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
-
-    if len(gabungan) < 5:
+    if len(gabungan) < 10:   # <-- naik dari 5 -> 10
         pesan_fallback = f"⚠️ Gabungan DDG+RSS hanya {len(gabungan)} → aktifkan DDG Web..."
         logger.info(pesan_fallback)
         if callback_log: callback_log(pesan_fallback)
-
         hasil_web = cari_duckduckgo_web(keywords, tanggal_mulai, tanggal_selesai, callback_log=callback_log)
-
         gabungan  = _deduplikasi(gabungan + hasil_web)
         gabungan  = _deduplikasi_judul(gabungan)
         gabungan  = _buang_homepage(gabungan, callback_log=callback_log)
         gabungan  = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
-
     pesan_akhir = f"📦 Total unik artikel (filter URL, Judul Mirip, Homepage & Bahasa): {len(gabungan)}"
     logger.info(pesan_akhir)
     if callback_log: callback_log(pesan_akhir)
-
     return gabungan
