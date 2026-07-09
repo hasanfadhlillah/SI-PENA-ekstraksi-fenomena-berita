@@ -984,7 +984,6 @@ if tab_aktif == TAB_LABELS[0]:
 
     with col_input_manual:
         st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
-        st.caption("💡 Kategori PDRB akan ditentukan otomatis oleh AI dari 51 kategori resmi — bisa dikoreksi manual saat validasi di Tab 2.")
         url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
                                 label_visibility="collapsed", key="text_url_manual")
         if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
