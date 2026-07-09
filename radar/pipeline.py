@@ -154,7 +154,8 @@ def _jalankan_pipeline_satu_level(
             ada_perbandingan=artikel.get("ada_perbandingan_waktu", False),
             relevan_kategori=artikel.get("relevan_dengan_kategori", False),
             layak_ekstrak=artikel.get("layak_ekstrak", False),
-            level_wilayah=level_cfg["level"],   # BARU
+            level_wilayah=level_cfg["level"],
+            sumber_media=artikel.get("sumber", ""),
         )
 
     return lolos

@@ -5,6 +5,7 @@ Mengambil isi artikel dari banyak URL sekaligus menggunakan ThreadPoolExecutor.
 Memanfaatkan scrape_berita() dari SI-FENO yang sudah ada.
 """
 
+from curses import meta
 import sys
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -68,6 +69,7 @@ def fetch_parallel(
                     gagal += 1
                     continue
                 hasil["url_asli"] = url
+                hasil["sumber"]   = meta.get("sumber", "")
                 tanggal_search       = meta.get("tanggal", "")
                 tanggal_search_pasti = meta.get("tanggal_pasti", False)
                 tanggal_scrape       = hasil.get("tanggal", "")

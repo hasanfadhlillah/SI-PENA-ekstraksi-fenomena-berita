@@ -49,16 +49,34 @@ def inisialisasi_database():
             status           TEXT    DEFAULT 'ditemukan',
             tanggal_ditemukan DATETIME,
             tanggal_diekstrak DATETIME,
-            level_wilayah    INTEGER DEFAULT 0
+            level_wilayah    INTEGER DEFAULT 0,
+            sumber_media     TEXT    DEFAULT ''
         )
     """)
-    # ── BARU: migrasi otomatis untuk DB lama yang belum punya kolom ini ──
-    # Aman dijalankan berkali-kali; hanya menambah kolom kalau belum ada.
+    # Migrasi otomatis untuk DB lama yang belum punya kolom ini
     cursor.execute("PRAGMA table_info(riwayat_artikel)")
     kolom_ada = [baris[1] for baris in cursor.fetchall()]
     if "level_wilayah" not in kolom_ada:
         cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN level_wilayah INTEGER DEFAULT 0")
         logger.info("[Database] Migrasi: kolom 'level_wilayah' ditambahkan ke riwayat_artikel.")
+    if "sumber_media" not in kolom_ada:
+        cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN sumber_media TEXT DEFAULT ''")
+        logger.info("[Database] Migrasi: kolom 'sumber_media' ditambahkan ke riwayat_artikel.")
+    
+    # ── Migrasi tabel hasil_ekstraksi: tema_topik -> kategori_pdrb ──
+    cursor.execute("PRAGMA table_info(hasil_ekstraksi)")
+    kolom_ekstraksi_ada = [baris[1] for baris in cursor.fetchall()]
+    if "kategori_pdrb" not in kolom_ekstraksi_ada:
+        cursor.execute("ALTER TABLE hasil_ekstraksi ADD COLUMN kategori_pdrb TEXT DEFAULT ''")
+        logger.info("[Database] Migrasi: kolom 'kategori_pdrb' ditambahkan ke hasil_ekstraksi.")
+        if "tema_topik" in kolom_ekstraksi_ada:
+            # Backward-compat: isi otomatis dari tema_topik lama supaya data lama
+            # tidak kosong total di kolom baru (best-effort, boleh dikoreksi manual).
+            cursor.execute(
+                "UPDATE hasil_ekstraksi SET kategori_pdrb = tema_topik "
+                "WHERE kategori_pdrb = '' OR kategori_pdrb IS NULL"
+            )
+            logger.info("[Database] Migrasi: kategori_pdrb dibackfill dari tema_topik lama.")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS status_kategori (
@@ -75,7 +93,7 @@ def inisialisasi_database():
         CREATE TABLE IF NOT EXISTS hasil_ekstraksi (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
             url_berita            TEXT    UNIQUE NOT NULL,
-            tema_topik            TEXT,
+            kategori_pdrb         TEXT,
             judul_dan_tanggal     TEXT,
             sumber_dan_link       TEXT,
             ringkasan_fenomena    TEXT,
@@ -117,7 +135,8 @@ def simpan_artikel(
     ada_perbandingan: bool,
     relevan_kategori: bool,
     layak_ekstrak: bool,
-    level_wilayah: int = 0,   # BARU
+    level_wilayah: int = 0,
+    sumber_media: str = "",
 ):
     """Menyimpan artikel baru ke database."""
     conn = get_connection()
@@ -128,8 +147,8 @@ def simpan_artikel(
             INSERT INTO riwayat_artikel
             (url_berita, judul_berita, kategori_pdrb, triwulan,
              skor_relevansi, alasan_ai, ada_data_angka, ada_perbandingan,
-             relevan_kategori, status, tanggal_ditemukan, level_wilayah)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             relevan_kategori, status, tanggal_ditemukan, level_wilayah, sumber_media)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url_berita) DO UPDATE SET
                 judul_berita = excluded.judul_berita,
                 kategori_pdrb = excluded.kategori_pdrb,
@@ -141,12 +160,13 @@ def simpan_artikel(
                 relevan_kategori = excluded.relevan_kategori,
                 status = excluded.status,
                 tanggal_ditemukan = excluded.tanggal_ditemukan,
-                level_wilayah = excluded.level_wilayah
+                level_wilayah = excluded.level_wilayah,
+                sumber_media = excluded.sumber_media
         """, (
             url, judul, kategori, triwulan,
             skor, alasan,
             int(ada_data_angka), int(ada_perbandingan), int(relevan_kategori),
-            status, datetime.now().isoformat(), level_wilayah
+            status, datetime.now().isoformat(), level_wilayah, sumber_media
         ))
         conn.commit()
     finally:
@@ -203,7 +223,7 @@ def ambil_artikel_valid(
 def filter_url_baru(
     list_url: list[str],
     paksa_proses_ulang: bool = False,
-    level_saat_ini: int = 0,   # BARU
+    level_saat_ini: int = 0,
 ) -> tuple[list[str], list[dict]]:
     """
     Memisahkan URL menjadi dua kelompok:
@@ -236,7 +256,7 @@ def filter_url_baru(
                 logger.info(f"Memproses ulang URL yang pernah gagal: {url}")
                 url_baru.append(url)
             elif level_saat_ini > level_sebelumnya:
-                # BARU: level sekarang lebih longgar -> layak dinilai ulang
+                # Level sekarang lebih longgar -> layak dinilai ulang
                 logger.info(
                     f"🔁 [Cross-Level] Menilai ulang di Level {level_saat_ini} "
                     f"(sebelumnya tidak lolos di Level {level_sebelumnya}): {url[:60]}..."
@@ -307,19 +327,19 @@ def ambil_semua_status_kategori(triwulan: str) -> list[dict]:
 
 
 def simpan_hasil_ekstraksi(url: str, json_final: dict):
-    """Simpan 12 variabel hasil ekstraksi ke tabel hasil_ekstraksi."""
+    """Simpan variabel hasil ekstraksi ke tabel hasil_ekstraksi."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
             INSERT INTO hasil_ekstraksi
-            (url_berita, tema_topik, judul_dan_tanggal, sumber_dan_link,
+            (url_berita, kategori_pdrb, judul_dan_tanggal, sumber_dan_link,
              ringkasan_fenomena, data_angka, kutipan_tokoh, lokasi_spesifik,
              intervensi_pemerintah, periode_kejadian, kata_kunci,
              sentimen_dampak, kategori_perbandingan, waktu_ekstraksi, model_ai)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(url_berita) DO UPDATE SET
-                tema_topik            = excluded.tema_topik,
+                kategori_pdrb         = excluded.kategori_pdrb,
                 judul_dan_tanggal     = excluded.judul_dan_tanggal,
                 sumber_dan_link       = excluded.sumber_dan_link,
                 ringkasan_fenomena    = excluded.ringkasan_fenomena,
@@ -335,7 +355,7 @@ def simpan_hasil_ekstraksi(url: str, json_final: dict):
                 model_ai              = excluded.model_ai
         """, (
             url,
-            str(json_final.get("tema_topik", "")),
+            str(json_final.get("kategori_pdrb", "")),
             str(json_final.get("judul_dan_tanggal", "")),
             str(json_final.get("sumber_dan_link", "")),
             str(json_final.get("ringkasan_fenomena", "")),

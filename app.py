@@ -266,7 +266,7 @@ def _buat_excel_ekstraksi(json_final: dict) -> bytes:
     ws.row_dimensions[4].height = 22
 
     LABEL_MAP = [
-        ("tema_topik",            "1. Tema / Topik"),
+        ("kategori_pdrb",         "1. Kategori PDRB"),
         ("judul_dan_tanggal",     "2. Judul & Tanggal Terbit"),
         ("sumber_dan_link",       "3. Sumber & Link Media"),
         ("ringkasan_fenomena",    "4. Ringkasan Fenomena"),
@@ -368,8 +368,8 @@ def _buat_excel_riwayat(df: pd.DataFrame) -> bytes:
 
     # Lebar kolom per nama kolom
     lebar = {
-        "Judul Berita": 50, "Kategori PDRB": 28, "Triwulan": 12,
-        "Skor AI": 10, "Status": 16, "Ditemukan": 20, "Diekstrak": 20,
+        "Judul Berita": 45, "Sumber Media": 20, "Kategori PDRB": 26, "Triwulan": 12,
+        "Skor AI": 10, "Status": 16, "Ditemukan": 20, "Diekstrak": 20, "Link Berita": 45,
     }
     for col_idx, col_name in enumerate(df.columns, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = lebar.get(col_name, 18)
@@ -435,7 +435,7 @@ def _buat_excel_semua_ekstraksi(df: pd.DataFrame) -> bytes:
         ws.row_dimensions[row_idx].height = tinggi
 
     lebar = {
-        "Waktu Ekstraksi": 18, "Tema/Topik": 22, "Judul & Tanggal": 32,
+        "Waktu Ekstraksi": 18, "Kategori PDRB": 26, "Judul & Tanggal": 32,
         "Sumber & Link": 36, "Ringkasan Fenomena": 50, "Data Angka": 30,
         "Kutipan Tokoh": 40, "Lokasi Spesifik": 22, "Intervensi Pemerintah": 35,
         "Periode Kejadian": 18, "Kata Kunci": 20, "Sentimen": 12,
@@ -460,6 +460,7 @@ for key, default in [
     ("backup_db_bytes", None),
     ("job_id_scan", None),
     ("job_kategori_scan", None),
+    ("kategori_pdrb_aktif", ""),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -1006,14 +1007,24 @@ if tab_aktif == TAB_LABELS[0]:
 
     with col_input_manual:
         st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
+        kategori_manual = st.selectbox(
+            "Kategori PDRB untuk URL manual:",
+            ["— Pilih Kategori —"] + DAFTAR_KATEGORI,
+            label_visibility="collapsed", key="selectbox_kategori_manual",
+        )
         url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
                                 label_visibility="collapsed", key="text_url_manual")
-        if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
+        if st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
                     help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.",
-                    key="btn_kirim_manual")
-                and url_manual):
-            st.session_state.target_url = url_manual
-            st.toast("URL berhasil dikirim! Silakan buka Tab 2 (Ekstraktor Fenomena).", icon="✅")
+                    key="btn_kirim_manual"):
+            if not url_manual:
+                st.toast("Isi dulu URL-nya!", icon="⚠️")
+            elif kategori_manual == "— Pilih Kategori —":
+                st.toast("Pilih dulu Kategori PDRB untuk URL manual ini!", icon="⚠️")
+            else:
+                st.session_state.target_url = url_manual
+                st.session_state.kategori_pdrb_aktif = kategori_manual
+                st.toast("URL berhasil dikirim! Silakan buka Tab 2 Ekstraktor Fenomena.", icon="✅")
 
     if kat_antrean != "— Pilih Kategori —":
         artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan, min_skor=min_skor)
@@ -1041,10 +1052,11 @@ if tab_aktif == TAB_LABELS[0]:
                     ca, cb, cc = st.columns([2, 2, 8])
                     with ca:
                         if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",
-                                     type="primary", help="Membawa artikel ini ke Tab 2.",
-                                     disabled=_sedang_scan):
+                                    type="primary", help="Membawa artikel ini ke Tab 2.",
+                                    disabled=_sedang_scan):
                             st.session_state.target_url = art["url_berita"]
-                            st.toast("Berita dikirim! Silakan buka Tab Ekstraktor.", icon="🚀")
+                            st.session_state.kategori_pdrb_aktif = art.get("kategori_pdrb", kat_antrean)
+                            st.toast("Berita dikirim! Silakan buka Tab 2 Ekstraktor Fenomena.", icon="🚀")
                     with cb:
                         if st.button("❌ Tolak (Hapus)", key=f"tolak_{art['id']}",
                                      help="Buang artikel ini dari antrean.",
@@ -1068,9 +1080,21 @@ elif tab_aktif == TAB_LABELS[1]:
         """)
 
     st.markdown("## 📝 Meja Ekstraksi Fenomena BPS")
-
     with st.container(border=True):
-        st.markdown("#### 1️⃣ Masukkan URL Berita")
+        st.markdown("#### 1️⃣ Konfirmasi Kategori PDRB & Masukkan URL Berita")
+        opsi_kat_ekstraktor = ["— Pilih Kategori —"] + DAFTAR_KATEGORI
+        kategori_default = st.session_state.kategori_pdrb_aktif
+        index_kat_default = (
+            opsi_kat_ekstraktor.index(kategori_default)
+            if kategori_default in opsi_kat_ekstraktor else 0
+        )
+        kategori_pdrb_pilih = st.selectbox(
+            "Kategori PDRB:", opsi_kat_ekstraktor, index=index_kat_default,
+            help="Otomatis terisi kalau artikel dikirim dari Tab Radar. Kalau paste URL langsung di "
+                "sini, pilih manual kategori PDRB yang paling sesuai.",
+            key="selectbox_kategori_ekstraktor"
+        )
+        st.session_state.kategori_pdrb_aktif = kategori_pdrb_pilih
         url_input = st.text_input(
             "URL Berita:",
             value=st.session_state.target_url,
@@ -1082,10 +1106,11 @@ elif tab_aktif == TAB_LABELS[1]:
                                 width='stretch',
                                 help="AI akan mulai membaca artikel secara penuh.",
                                 key="btn_mulai_ekstrak")
-
     if btn_ekstrak:
         if not url_input.strip():
             st.error("URL tidak boleh kosong!")
+        elif kategori_pdrb_pilih == "— Pilih Kategori —":
+            st.error("Pilih dulu Kategori PDRB untuk artikel ini!")
         elif not any(KEYS.values()):
             st.error("Tidak ada API Key yang terisi! Tambahkan di file `.env`.")
         else:
@@ -1108,7 +1133,7 @@ elif tab_aktif == TAB_LABELS[1]:
                         f"({len(hasil_scrape['teks'])} karakter)."
                     )
                     st.write("🧠 2/2. AI Menganalisis 12 Variabel BPS... (Tunggu 10–20 Detik)")
-                    hasil_ai = ekstrak_fenomena_ai(KEYS, hasil_scrape)
+                    hasil_ai = ekstrak_fenomena_ai(KEYS, hasil_scrape, kategori_pdrb_pilih)
 
                     if hasil_ai["status"] == "error":
                         status_box.update(label="AI Tumbang / Limit Kuota!", state="error")
@@ -1133,7 +1158,7 @@ elif tab_aktif == TAB_LABELS[1]:
         with st.form("form_finalisasi"):
             col1, col2 = st.columns(2)
             with col1:
-                tema       = st.text_input("1. Tema Topik",            value=_ke_str(data.get("tema_topik", "")))
+                kategori_final = st.text_input("1. Kategori PDRB",     value=_ke_str(data.get("kategori_pdrb", "")))
                 judul_tgl  = st.text_input("2. Judul & Tanggal Terbit", value=_ke_str(data.get("judul_dan_tanggal", "")))
                 sumber     = st.text_input("3. Sumber & Link Media",    value=_ke_str(data.get("sumber_dan_link", "")))
                 lokasi     = st.text_input("7. Lokasi Spesifik",        value=_ke_str(data.get("lokasi_spesifik", "")))
@@ -1173,7 +1198,7 @@ elif tab_aktif == TAB_LABELS[1]:
                 model_info = data.get("_model_digunakan", "")
                 tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
                 st.session_state.json_final_siap = {
-                    "tema_topik"           : tema,
+                    "kategori_pdrb"        : kategori_final,
                     "judul_dan_tanggal"    : judul_tgl,
                     "sumber_dan_link"      : sumber,
                     "ringkasan_fenomena"   : ringkasan,
@@ -1212,7 +1237,7 @@ elif tab_aktif == TAB_LABELS[1]:
         st.markdown("#### 📤 Unduh Hasil Ekstraksi Ini (Pilih Format)")
 
         LABEL_MAP_DL = [
-            ("tema_topik",            "Tema Topik"),
+            ("kategori_pdrb",         "Kategori PDRB"),
             ("judul_dan_tanggal",     "Judul & Tanggal"),
             ("sumber_dan_link",       "Sumber & Link"),
             ("ringkasan_fenomena",    "Ringkasan Fenomena"),
@@ -1269,6 +1294,7 @@ elif tab_aktif == TAB_LABELS[1]:
 
         if st.button("🔄 Mulai Kerjakan Artikel Baru", key="btn_artikel_baru"):
             st.session_state.json_final_siap = None
+            st.session_state.kategori_pdrb_aktif = ""
             st.rerun()
 
 
@@ -1291,13 +1317,14 @@ elif tab_aktif == TAB_LABELS[2]:
         df_riwayat = pd.read_sql_query("""
             SELECT
                 judul_berita      AS "Judul Berita",
+                sumber_media      AS "Sumber Media",
                 kategori_pdrb     AS "Kategori PDRB",
                 triwulan          AS "Triwulan",
                 skor_relevansi    AS "Skor AI",
                 status            AS "Status",
                 tanggal_ditemukan AS "Ditemukan",
                 tanggal_diekstrak AS "Diekstrak",
-                url_berita        AS "URL"
+                url_berita        AS "Link Berita"
             FROM riwayat_artikel
             ORDER BY tanggal_ditemukan DESC
         """, conn)
@@ -1338,17 +1365,19 @@ elif tab_aktif == TAB_LABELS[2]:
         if filter_kat:    df_tampil = df_tampil[df_tampil["Kategori PDRB"].isin(filter_kat)]
 
         st.markdown(f"**Menampilkan {len(df_tampil)} dari {len(df_riwayat)} total entri di Database**")
-        st.dataframe(df_tampil.drop(columns=["URL"]), width='stretch', hide_index=True)
-
-        # ── [CHANGE 4 + 5]: Excel profesional + nama file standar ──────────
+        st.dataframe(
+            df_tampil, width='stretch', hide_index=True,
+            column_config={
+                "Link Berita": st.column_config.LinkColumn("Link Berita", display_text="🔗 Buka Artikel")
+            }
+        )
+        # ── Excel profesional + nama file standar ──────────
         st.markdown("**📤 Export Tabel Riwayat Radar:**")
         col_e1, col_e2, col_e3 = st.columns(3)
-
         with col_e1:
-            # ── [CHANGE 4]: Excel berformat rapi (bukan plain) ──
             st.download_button(
                 "⬇️ Download Excel (.xlsx)",
-                data=_buat_excel_riwayat(df_tampil.drop(columns=["URL"])),
+                data=_buat_excel_riwayat(df_tampil),
                 file_name=_nama_file("RiwayatRadar", "xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width='stretch', type="primary", key="dl_riwayat_xlsx"
@@ -1379,7 +1408,7 @@ elif tab_aktif == TAB_LABELS[2]:
         df_ekstraksi = pd.read_sql_query("""
             SELECT
                 waktu_ekstraksi       AS "Waktu Ekstraksi",
-                tema_topik            AS "Tema/Topik",
+                kategori_pdrb         AS "Kategori PDRB",
                 judul_dan_tanggal     AS "Judul & Tanggal",
                 sumber_dan_link       AS "Sumber & Link",
                 ringkasan_fenomena    AS "Ringkasan Fenomena",

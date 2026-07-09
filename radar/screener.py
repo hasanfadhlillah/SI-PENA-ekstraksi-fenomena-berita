@@ -316,6 +316,7 @@ def screening_satu_artikel(
         hasil["url"]             = url
         hasil["judul"]           = judul
         hasil["teks"]            = artikel.get("teks", "")
+        hasil["sumber"]          = artikel.get("sumber", "")
         hasil["_model_screener"] = model_terpakai
 
         validasi_programatik = _validasi_wilayah_programatik(judul, artikel.get("teks", ""), wilayah)
@@ -337,6 +338,7 @@ def screening_satu_artikel(
         logger.error(f"Screening Gagal Total untuk {url[:50]}: {e}")
         return {
             "url": url, "judul": judul, "teks": artikel.get("teks", ""),
+            "sumber": artikel.get("sumber", ""),
             "skor_relevansi": 0, "alasan_singkat": f"Error AI: {str(e)[:60]}",
             "ada_data_angka": False, "ada_perbandingan_waktu": False,
             "relevan_dengan_kategori": False, "wilayah_valid": False,
