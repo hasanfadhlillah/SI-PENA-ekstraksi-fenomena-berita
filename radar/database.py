@@ -220,6 +220,25 @@ def ambil_artikel_valid(
     return hasil
 
 
+def hitung_total_artikel_valid(kategori: str, triwulan: str, min_skor: int = DEFAULT_MIN_SKOR) -> int:
+    """
+    Hitung TOTAL artikel valid kumulatif (status 'ditemukan' MAUPUN 'diekstrak')
+    untuk kategori+triwulan tertentu, sesuai ambang skor saat ini.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COUNT(*) FROM riwayat_artikel
+        WHERE kategori_pdrb = ?
+          AND triwulan      = ?
+          AND status IN ('ditemukan', 'diekstrak')
+          AND skor_relevansi >= ?
+    """, (kategori, triwulan, min_skor))
+    hasil = cursor.fetchone()
+    conn.close()
+    return hasil[0] if hasil else 0
+
+
 def filter_url_baru(
     list_url: list[str],
     paksa_proses_ulang: bool = False,

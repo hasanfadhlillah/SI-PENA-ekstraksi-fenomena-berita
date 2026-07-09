@@ -9,7 +9,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from .database       import (inisialisasi_database, filter_url_baru,
-                             simpan_artikel, update_status_kategori, ambil_artikel_valid)
+                             simpan_artikel, update_status_kategori, ambil_artikel_valid,
+                             hitung_total_artikel_valid)
 from .query_expander import dapatkan_keywords
 from .searcher       import cari_berita_multi_sumber
 from .fetcher        import fetch_parallel
@@ -239,8 +240,8 @@ def scan_kategori(
                 _log(f"🎯 Target minimal {target_minimal} artikel tercapai. Berhenti di Level {level_sekarang}.")
                 break
 
-    update_status_kategori(nama_kategori, triwulan, len(semua_artikel_valid))
-
+    total_valid_kumulatif = hitung_total_artikel_valid(nama_kategori, triwulan, min_skor)
+    update_status_kategori(nama_kategori, triwulan, total_valid_kumulatif)
     auto_backup_ke_hf_dataset()
 
     if semua_artikel_valid:
