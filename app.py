@@ -69,6 +69,10 @@ st.markdown("""
     background-color: rgba(255, 193, 7, 0.2); color: #d39e00;
     padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 13px;
 }
+.badge-skor-merah {
+    background-color: rgba(220, 53, 69, 0.2); color: #dc3545;
+    padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 13px;
+}
 .alasan-box {
     background-color: rgba(74, 108, 247, 0.1);
     border-left: 4px solid #4a6cf7;
@@ -482,7 +486,7 @@ with st.sidebar:
     scan_semua  = st.toggle("🌐 Scan Semua Level Wilayah (khusus Batch Scan)", value=False,
                             help="Toggle ini HANYA berlaku untuk mode '✨ SEMUA KATEGORI (BATCH SCAN)'. "
                                  "Nonaktif (default) = Batch Scan berhenti begitu tiap kategori menemukan "
-                                 "minimal 3 artikel. Catatan: scan 1 kategori (bukan Batch Scan) SELALU memindai semua "
+                                 "minimal 5 artikel. Catatan: scan 1 kategori (bukan Batch Scan) SELALU memindai semua "
                                  "5 level wilayah secara penuh, tidak terpengaruh toggle ini.",
                             key="toggle_scan_semua")
 
@@ -662,7 +666,7 @@ if tab_aktif == TAB_LABELS[0]:
         1. **⚙️ Atur Dahulu di Sidebar:** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
         2. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
         3. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
-        4. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Kirim ke Ekstraktor** untuk membedah artikel tersebut di Tab 2.
+        4. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Ekstrak Berita Ini** untuk membedah artikel tersebut di Tab 2.
         """)
 
     # ── [BARU] CHANGE 1: Kriteria & Sistem Skoring ────────────────────────────
@@ -1001,9 +1005,13 @@ if tab_aktif == TAB_LABELS[0]:
         else:
             st.markdown(f"**{len(artikel_db)} artikel menunggu ekstraksi:**")
             for art in artikel_db:
-                skor  = art["skor_relevansi"]
-                badge = "badge-skor-hijau" if skor >= 8 else "badge-skor-kuning"
-                label = "🟢" if skor >= 8 else "🟡"
+                skor = art["skor_relevansi"]
+                if skor >= 8:
+                    badge, label = "badge-skor-hijau", "🟢"
+                elif skor >= 6:
+                    badge, label = "badge-skor-kuning", "🟡"
+                else:
+                    badge, label = "badge-skor-merah", "🔴"
                 with st.container():
                     st.markdown(f"""
                     <div class="kartu-artikel">
@@ -1573,7 +1581,7 @@ elif tab_aktif == TAB_LABELS[5]:
     st.markdown("""
     <div class="hero-banner">
         <h1>✒️ SI-PENA</h1>
-        <div class="tagline">Sistem Informasi Pencari Berita &amp; Ekstraksi Fenomena Ekonomi</div>
+        <div class="tagline">Sistem Informasi Pencari Berita &amp; Ekstraksi Fenomena</div>
         <div class="desc">
             Platform berbasis AI yang dirancang khusus untuk membantu analis BPS Kota Magelang
             menemukan, menyaring, dan mengekstrak fenomena ekonomi dari ribuan artikel berita online
@@ -1629,7 +1637,7 @@ elif tab_aktif == TAB_LABELS[5]:
          "dan sistem scoring AI 1–10 untuk menyaring berita yang benar-benar relevan."),
         ("📝", "Ekstraktor Fenomena AI",
          "Membaca artikel secara penuh dan mengekstrak 12 variabel BPS secara otomatis: "
-         "tema, ringkasan fenomena, data angka kuantitatif, kutipan tokoh, lokasi spesifik, "
+         "kategori PDRB, ringkasan fenomena, data angka kuantitatif, kutipan tokoh, lokasi spesifik, "
          "intervensi pemerintah, periode kejadian, sentimen, dan lainnya."),
         ("🗄️", "History & Download Massal",
          "Menyimpan semua riwayat pencarian dan hasil ekstraksi ke database SQLite lokal. "
@@ -1664,8 +1672,14 @@ elif tab_aktif == TAB_LABELS[5]:
 
     # ── Alur Kerja ────────────────────────────────────────────────────────────
     st.markdown("### 🔄 Alur Kerja Pipeline Radar")
-    st.caption("Setiap kali tombol SCAN ditekan, sistem menjalankan 6 tahapan berurutan secara otomatis:")
-
+    st.caption(
+        "Setiap kali tombol SCAN ditekan, sistem menjalankan 5 tahapan otomatis (Modul A–E) "
+        "secara berurutan untuk membentuk antrean berita. Modul F (Auto-Expand Fallback) "
+        "bekerja di belakang layar, mengulang tahap B–E di tiap level wilayah (Kota → Kab → "
+        "Kedu → Jateng → Nasional) sampai target artikel tercapai atau semua level habis. "
+        "Ekstraksi 12 variabel BUKAN bagian dari SCAN — dilakukan manual oleh staf di Tab 2 "
+        "setelah artikel dipilih dari antrean."
+    )
     alur = [
         ("🔑", "Query Expansion (Modul A)",
          "Nama kategori PDRB (misal 'Tanaman Pangan') diterjemahkan menjadi keyword "
@@ -1686,9 +1700,9 @@ elif tab_aktif == TAB_LABELS[5]:
          "Setiap artikel dibaca oleh AI dan diberi skor relevansi 1–10 berdasarkan "
          "kriteria geografi, kelengkapan data angka, dan kesesuaian kategori. "
          "Artikel dengan skor di bawah threshold dibuang, sisanya masuk antrean."),
-        ("📝", "Ekstraksi 12 Variabel (Modul F)",
-         "Staf memilih artikel dari antrean, lalu AI membaca penuh dan mengekstrak "
-         "12 variabel BPS. Staf memvalidasi dan mengedit hasil AI, kemudian "
+        ("📝", "Ekstraksi 12 Variabel (Tahap Manual — Tab 2)",
+         "Setelah antrean terbentuk, staf memilih artikel, lalu AI membaca penuh dan "
+         "mengekstrak 12 variabel BPS. Staf memvalidasi dan mengedit hasil AI, kemudian "
          "menfinalisasi — data tersimpan ke database dan siap diunduh."),
     ]
 
@@ -1708,18 +1722,17 @@ elif tab_aktif == TAB_LABELS[5]:
     # ── Teknologi ─────────────────────────────────────────────────────────────
     st.markdown("### 🛠️ Teknologi yang Digunakan")
     col_t1, col_t2, col_t3, col_t4 = st.columns(4)
-
     with col_t1:
         st.markdown("**🖥️ Framework & Backend**")
         for tech, warna in [
             ("Streamlit", "#ff4b4b"), ("Python 3.10+", "#3776ab"),
             ("SQLite", "#003b57"), ("Pandas", "#150458"),
+            ("Threading (Concurrency)", "#10b981"), ("python-dotenv", "#65a30d"),
         ]:
             st.markdown(
                 f'<span class="tech-chip" style="background:{warna}20; color:{warna}; border:1px solid {warna}40;">'
                 f'{tech}</span>', unsafe_allow_html=True
             )
-
     with col_t2:
         st.markdown("**🤖 Model AI**")
         for tech, warna in [
@@ -1731,24 +1744,23 @@ elif tab_aktif == TAB_LABELS[5]:
                 f'<span class="tech-chip" style="background:{warna}20; color:{warna}; border:1px solid {warna}40;">'
                 f'{tech}</span>', unsafe_allow_html=True
             )
-
     with col_t3:
         st.markdown("**🔍 Sumber Berita**")
         for tech, warna in [
             ("DuckDuckGo News", "#de5833"), ("Google News RSS", "#4285f4"),
             ("DuckDuckGo Web", "#de5833"), ("Jina Reader API", "#0d6efd"),
-            ("Wayback Machine", "#795548"),
+            ("Wayback Machine", "#795548"), ("Direct HTTP Request", "#6366f1"),
         ]:
             st.markdown(
                 f'<span class="tech-chip" style="background:{warna}20; color:{warna}; border:1px solid {warna}40;">'
                 f'{tech}</span>', unsafe_allow_html=True
             )
-
     with col_t4:
         st.markdown("**📦 Library Utama**")
         for tech, warna in [
             ("openpyxl", "#217346"), ("feedparser", "#ff6b35"),
             ("requests + ddgs", "#0d6efd"), ("Altair (Visualisasi)", "#f9a03c"),
+            ("huggingface_hub", "#8b5cf6"), ("python-dateutil", "#14b8a6"),
         ]:
             st.markdown(
                 f'<span class="tech-chip" style="background:{warna}20; color:{warna}; border:1px solid {warna}40;">'
