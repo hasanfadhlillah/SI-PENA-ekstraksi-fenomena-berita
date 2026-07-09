@@ -488,7 +488,7 @@ with st.sidebar:
 
     _job_sidebar = ambil_job(st.session_state.job_id_scan) if st.session_state.job_id_scan else None
     if _job_sidebar and _job_sidebar["status"] == "berjalan":
-        st.info(f"🔄 **Scan sedang berjalan:**\n\n{st.session_state.job_kategori_scan}.")
+        st.info(f"🔄 **Scan sedang berjalan:**\n\n{st.session_state.job_kategori_scan}")
     st.markdown("---")
     st.markdown("### 🚦 Status Pasukan AI (Pool)")
     st.caption("Aplikasi ini menggunakan sistem Load Balancing. AI akan otomatis berganti kunci jika terjadi limit.")
@@ -783,7 +783,7 @@ if tab_aktif == TAB_LABELS[0]:
             )
         with col_btn:
             btn_scan = st.button(
-                "⏳ Berjalan..." if sedang_berjalan else "▶ SCAN",
+                "⏳ Memproses..." if sedang_berjalan else "▶ SCAN",
                 type="primary", width='stretch',
                 help="Mulai pencarian dan filter AI.", key="btn_scan_radar",
                 disabled=sedang_berjalan,
@@ -1318,12 +1318,12 @@ elif tab_aktif == TAB_LABELS[2]:
             filter_tw = st.multiselect(
                 "Filter Triwulan:",
                 df_riwayat["Triwulan"].unique().tolist() if not df_riwayat.empty else [],
-                default=df_riwayat["Triwulan"].unique().tolist()[:1] if not df_riwayat.empty else [],
+                default=df_riwayat["Triwulan"].unique().tolist() if not df_riwayat.empty else [],
                 key="multiselect_filter_tw"
             )
         with col_f3:
             filter_kat = st.multiselect(
-                "Filter Kategori (Opsional):",
+                "Filter Kategori PDRB:",
                 df_riwayat["Kategori PDRB"].unique().tolist() if not df_riwayat.empty else [],
                 key="multiselect_filter_kat"
             )
@@ -1351,6 +1351,7 @@ elif tab_aktif == TAB_LABELS[2]:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width='stretch', type="primary", key="dl_riwayat_xlsx"
             )
+            st.caption("📊 Excel berformat rapi — direkomendasikan untuk laporan BPS")
         with col_e2:
             csv_exp = df_tampil.to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -1358,6 +1359,7 @@ elif tab_aktif == TAB_LABELS[2]:
                 file_name=_nama_file("RiwayatRadar", "csv"),
                 mime="text/csv", width='stretch', key="dl_riwayat_csv"
             )
+            st.caption("📄 CSV — mudah digabungkan di database tabular")
         with col_e3:
             json_riwayat = df_tampil.to_json(orient="records", force_ascii=False, indent=2)
             st.download_button(
@@ -1365,6 +1367,7 @@ elif tab_aktif == TAB_LABELS[2]:
                 file_name=_nama_file("RiwayatRadar", "json"),
                 mime="application/json", width='stretch', key="dl_riwayat_json"
             )
+            st.caption("🗂️ JSON — untuk integrasi antar aplikasi/developer")
 
     # ── DOWNLOAD MASSAL HASIL EKSTRAKSI ──────────────────────────────────────
     st.markdown("---")
@@ -1406,10 +1409,9 @@ elif tab_aktif == TAB_LABELS[2]:
         st.markdown(f"**Total {len(df_ekstraksi)} hasil ekstraksi tersimpan.**")
         st.dataframe(df_ekstraksi.drop(columns=["URL"]), width='stretch', hide_index=True)
 
-        # ── [CHANGE 3 + 4 + 5]: 3 tombol download + Excel profesional + nama standar ──
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
-            # ── [CHANGE 4]: Excel berformat rapi ──
+            # Excel berformat rapi
             st.download_button(
                 "⬇️ Download Excel (.xlsx)",
                 data=_buat_excel_semua_ekstraksi(df_ekstraksi.drop(columns=["URL"])),
@@ -1428,7 +1430,6 @@ elif tab_aktif == TAB_LABELS[2]:
             )
             st.caption("📄 CSV — mudah digabungkan di database tabular")
         with col_d3:
-            # ── [CHANGE 3]: Tambah tombol JSON untuk Semua Ekstraksi ──
             json_eks = df_ekstraksi.to_json(orient="records", force_ascii=False, indent=2)
             st.download_button(
                 "⬇️ Download JSON",
