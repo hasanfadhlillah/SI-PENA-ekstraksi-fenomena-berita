@@ -24,7 +24,7 @@ from radar.database import (
     reset_total_database,
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
-from radar.scan_manager import buat_job, tambah_log, set_selesai, set_error, ambil_job, hapus_job
+from radar.scan_manager import buat_job, tambah_log, set_selesai, set_error, ambil_job, hapus_job, ambil_job_aktif
 import threading
 from radar.config import DEFAULT_MIN_SKOR, DAFTAR_KATEGORI_PDRB as DAFTAR_KATEGORI
 from radar.backup import (
@@ -772,8 +772,22 @@ if tab_aktif == TAB_LABELS[0]:
     with st.container(border=True):
         st.markdown("#### 🚀 Jalankan Radar")
 
+        # ── Deteksi scan aktif SECARA GLOBAL (bukan cuma session ini) ──
+        job_aktif_global = ambil_job_aktif()
+        if job_aktif_global and st.session_state.job_id_scan != job_aktif_global["job_id"]:
+            st.session_state.job_id_scan = job_aktif_global["job_id"]
+            st.session_state.job_kategori_scan = job_aktif_global["kategori"]
+
+        if job_aktif_global:
+            st.warning(
+                f"🔄 **Ada scan sedang berjalan:** kategori **{job_aktif_global['kategori']}** "
+                f"(triwulan {job_aktif_global['triwulan']}), dimulai pukul {job_aktif_global['mulai_pukul']}. "
+                f"Tombol SCAN dinonaktifkan sampai proses ini selesai — progresnya bisa dipantau di bawah, "
+                f"aman untuk pindah tab atau refresh halaman kapan saja."
+            )
+
         job_aktif = ambil_job(st.session_state.job_id_scan) if st.session_state.job_id_scan else None
-        sedang_berjalan = job_aktif is not None and job_aktif["status"] == "berjalan"
+        sedang_berjalan = job_aktif_global is not None
 
         col_kat, col_btn = st.columns([4, 1])
         with col_kat:
@@ -805,10 +819,9 @@ if tab_aktif == TAB_LABELS[0]:
                     st.error(f"⚠️ {e}")
                     st.stop()
 
-                job_id = buat_job()
+                job_id = buat_job(kategori=pilihan_kategori, triwulan=triwulan_berjalan)
                 st.session_state.job_id_scan = job_id
                 st.session_state.job_kategori_scan = pilihan_kategori
-
                 if pilihan_kategori == "✨ SEMUA KATEGORI (BATCH SCAN)":
                     t = threading.Thread(
                         target=_jalankan_scan_background,
@@ -1023,8 +1036,7 @@ if tab_aktif == TAB_LABELS[0]:
                         <div class="alasan-box">💬 {art['alasan_ai']}</div>
                     </div>
                     """, unsafe_allow_html=True)
-                    _sedang_scan = st.session_state.job_id_scan is not None and \
-                        (ambil_job(st.session_state.job_id_scan) or {}).get("status") == "berjalan"
+                    _sedang_scan = ambil_job_aktif() is not None
                     ca, cb, cc = st.columns([2, 2, 8])
                     with ca:
                         if st.button("🚀 Ekstrak Berita Ini", key=f"eks_{art['id']}",

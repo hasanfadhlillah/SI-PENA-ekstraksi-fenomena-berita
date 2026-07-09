@@ -26,6 +26,28 @@ def _normalisasi_url(url: str) -> str:
             url = url.split(param)[0]
     return url.rstrip("/")
 
+def _ekstrak_nama_domain(url: str) -> str:
+    """
+    Ekstrak nama domain rapi dari URL sebagai fallback nama sumber media,
+    dipakai ketika field 'sumber' asli kosong.
+    """
+    if not url:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+        for prefix in ("www.", "m.", "amp."):
+            if domain.startswith(prefix):
+                domain = domain[len(prefix):]
+                break
+        if not domain:
+            return ""
+        parts = domain.split(".")
+        if parts:
+            parts[0] = parts[0].capitalize()
+        return ".".join(parts)
+    except Exception:
+        return ""
 
 def _resolve_google_news_url(google_url: str) -> str:
     """
@@ -484,7 +506,7 @@ def cari_duckduckgo_web(
                                 "judul":         item.get("title", ""),
                                 "tanggal":       "",
                                 "tanggal_pasti": False,
-                                "sumber":        "",
+                                "sumber":        _ekstrak_nama_domain(url),
                                 "sumber_search": "DuckDuckGo Web"
                             })
                     time.sleep(1)

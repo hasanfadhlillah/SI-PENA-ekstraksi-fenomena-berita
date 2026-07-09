@@ -12,7 +12,7 @@ from .database       import (inisialisasi_database, filter_url_baru,
                              simpan_artikel, update_status_kategori, ambil_artikel_valid,
                              hitung_total_artikel_valid)
 from .query_expander import dapatkan_keywords
-from .searcher       import cari_berita_multi_sumber
+from .searcher       import cari_berita_multi_sumber, _ekstrak_nama_domain
 from .fetcher        import fetch_parallel
 from .screener       import screening_batch
 from .fallback       import (URUTAN_FALLBACK, dapatkan_level_fallback_berikutnya,
@@ -144,6 +144,7 @@ def _jalankan_pipeline_satu_level(
     for artikel in lolos + tidak_lolos:
         url   = artikel.get("url", "")
         judul = artikel.get("judul", "")
+        sumber_final = artikel.get("sumber", "").strip() or _ekstrak_nama_domain(url)
         simpan_artikel(
             url=url,
             judul=judul,
@@ -156,7 +157,7 @@ def _jalankan_pipeline_satu_level(
             relevan_kategori=artikel.get("relevan_dengan_kategori", False),
             layak_ekstrak=artikel.get("layak_ekstrak", False),
             level_wilayah=level_cfg["level"],
-            sumber_media=artikel.get("sumber", ""),
+            sumber_media=sumber_final,
         )
 
     return lolos
@@ -241,6 +242,10 @@ def scan_kategori(
                 break
 
     total_valid_kumulatif = hitung_total_artikel_valid(nama_kategori, triwulan, min_skor)
+    logger.info(
+        f"📊 [Update Dashboard] Kategori '{nama_kategori}' ({triwulan}): "
+        f"total kumulatif tersimpan = {total_valid_kumulatif} artikel (skor >= {min_skor})"
+    )
     update_status_kategori(nama_kategori, triwulan, total_valid_kumulatif)
     auto_backup_ke_hf_dataset()
 
