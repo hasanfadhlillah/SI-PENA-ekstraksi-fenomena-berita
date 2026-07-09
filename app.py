@@ -26,7 +26,7 @@ from radar.database import (
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
 from radar.scan_manager import buat_job, tambah_log, set_selesai, set_error, ambil_job, hapus_job
 import threading
-from radar.config import DEFAULT_MIN_SKOR
+from radar.config import DEFAULT_MIN_SKOR, DAFTAR_KATEGORI_PDRB as DAFTAR_KATEGORI
 from radar.backup import (
     buat_backup_keywords_bytes,
     buat_backup_database_bytes,
@@ -155,29 +155,6 @@ def _nama_file(tipe: str, fmt: str) -> str:
     if tipe == "EkstraksiFenomena":
         return f"SIPENA_{tipe}_{ts}.{fmt}"
     return f"SIPENA_{tipe}_{tgl}.{fmt}"
-
-DAFTAR_KATEGORI = [
-    "Tanaman Pangan", "Tanaman Hortikultura Semusim", "Perkebunan Semusim",
-    "Tanaman Hortikultura Tahunan", "Perkebunan Tahunan", "Peternakan",
-    "Jasa Pertanian dan Perburuan", "Kehutanan dan Penebangan Kayu", "Perikanan",
-    "Pertambangan Minyak dan Gas Bumi", "Pertambangan Batubara dan Lignit",
-    "Pertambangan Bijih Logam", "Pertambangan dan Penggalian Lainnya",
-    "Industri Makanan dan Minuman", "Pengolahan Tembakau",
-    "Industri Tekstil dan Pakaian Jadi", "Industri Kulit, Barang dari Kulit dan Alas Kaki",
-    "Industri Kayu, Barang dari Kayu dan Gabus", "Industri Kertas dan Percetakan",
-    "Industri Kimia, Farmasi dan Obat Tradisional", "Industri Karet, Barang dari Karet dan Plastik",
-    "Industri Barang Galian bukan Logam", "Industri Logam Dasar",
-    "Industri Barang dari Logam, Komputer, Elektronik", "Industri Alat Angkutan", "Industri Furnitur",
-    "Industri Pengolahan Lainnya, Jasa Reparasi, Pemasangan Mesin dan Peralatan",
-    "Ketenagalistrikan", "Pengadaan Gas dan Produksi Es", "Pengadaan Air", "Konstruksi",
-    "Perdagangan Mobil, Sepeda Motor dan Reparasinya", "Perdagangan Besar dan Eceran",
-    "Angkutan Rel", "Angkutan Darat", "Angkutan Laut", "Angkutan Udara",
-    "Pergudangan dan Jasa Penunjang Angkutan", "Penyediaan Akomodasi", "Penyediaan Makan Minum",
-    "Informasi dan Komunikasi", "Jasa Perantara Keuangan", "Asuransi dan Dana Pensiun",
-    "Jasa Keuangan Lainnya", "Real Estate", "Jasa Perusahaan",
-    "Administrasi Pemerintahan dan Jaminan Sosial", "Jasa Pendidikan",
-    "Jasa Kesehatan dan Kegiatan Sosial", "Jasa Lainnya", "PRODUK DOMESTIK BRUTO"
-]
 
 # Validasi otomatis sinkronisasi DAFTAR_KATEGORI vs keywords.json
 def _validasi_sinkronisasi_kategori():
@@ -1007,24 +984,16 @@ if tab_aktif == TAB_LABELS[0]:
 
     with col_input_manual:
         st.markdown("**📎 Atau input URL manual (dari Google atau lainnya):**")
-        kategori_manual = st.selectbox(
-            "Kategori PDRB untuk URL manual:",
-            ["— Pilih Kategori —"] + DAFTAR_KATEGORI,
-            label_visibility="collapsed", key="selectbox_kategori_manual",
-        )
+        st.caption("💡 Kategori PDRB akan ditentukan otomatis oleh AI dari 51 kategori resmi — bisa dikoreksi manual saat validasi di Tab 2.")
         url_manual = st.text_input("URL Berita Manual:", placeholder="https://...",
                                 label_visibility="collapsed", key="text_url_manual")
-        if st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
+        if (st.button("📤 Kirim ke Ekstraktor Tab 2", width='stretch',
                     help="Melewati scan radar dan langsung mengirim link ke meja Ekstraktor.",
-                    key="btn_kirim_manual"):
-            if not url_manual:
-                st.toast("Isi dulu URL-nya!", icon="⚠️")
-            elif kategori_manual == "— Pilih Kategori —":
-                st.toast("Pilih dulu Kategori PDRB untuk URL manual ini!", icon="⚠️")
-            else:
-                st.session_state.target_url = url_manual
-                st.session_state.kategori_pdrb_aktif = kategori_manual
-                st.toast("URL berhasil dikirim! Silakan buka Tab 2 Ekstraktor Fenomena.", icon="✅")
+                    key="btn_kirim_manual")
+                and url_manual):
+            st.session_state.target_url = url_manual
+            st.session_state.kategori_pdrb_aktif = ""
+            st.toast("URL berhasil dikirim! Silakan buka Tab 2 Ekstraktor Fenomena.", icon="✅")
 
     if kat_antrean != "— Pilih Kategori —":
         artikel_db = ambil_artikel_valid(kat_antrean, triwulan_berjalan, min_skor=min_skor)
@@ -1081,20 +1050,11 @@ elif tab_aktif == TAB_LABELS[1]:
 
     st.markdown("## 📝 Meja Ekstraksi Fenomena BPS")
     with st.container(border=True):
-        st.markdown("#### 1️⃣ Konfirmasi Kategori PDRB & Masukkan URL Berita")
-        opsi_kat_ekstraktor = ["— Pilih Kategori —"] + DAFTAR_KATEGORI
-        kategori_default = st.session_state.kategori_pdrb_aktif
-        index_kat_default = (
-            opsi_kat_ekstraktor.index(kategori_default)
-            if kategori_default in opsi_kat_ekstraktor else 0
-        )
-        kategori_pdrb_pilih = st.selectbox(
-            "Kategori PDRB:", opsi_kat_ekstraktor, index=index_kat_default,
-            help="Otomatis terisi kalau artikel dikirim dari Tab Radar. Kalau paste URL langsung di "
-                "sini, pilih manual kategori PDRB yang paling sesuai.",
-            key="selectbox_kategori_ekstraktor"
-        )
-        st.session_state.kategori_pdrb_aktif = kategori_pdrb_pilih
+        st.markdown("#### 1️⃣ Masukkan URL Berita")
+        if st.session_state.kategori_pdrb_aktif:
+            st.caption(f"📁 Kategori PDRB (dari Radar): **{st.session_state.kategori_pdrb_aktif}**")
+        else:
+            st.caption("📁 Kategori PDRB akan ditentukan otomatis oleh AI dari 51 kategori resmi — bisa dikoreksi manual setelah ekstraksi selesai.")
         url_input = st.text_input(
             "URL Berita:",
             value=st.session_state.target_url,
@@ -1109,8 +1069,6 @@ elif tab_aktif == TAB_LABELS[1]:
     if btn_ekstrak:
         if not url_input.strip():
             st.error("URL tidak boleh kosong!")
-        elif kategori_pdrb_pilih == "— Pilih Kategori —":
-            st.error("Pilih dulu Kategori PDRB untuk artikel ini!")
         elif not any(KEYS.values()):
             st.error("Tidak ada API Key yang terisi! Tambahkan di file `.env`.")
         else:
@@ -1133,7 +1091,7 @@ elif tab_aktif == TAB_LABELS[1]:
                         f"({len(hasil_scrape['teks'])} karakter)."
                     )
                     st.write("🧠 2/2. AI Menganalisis 12 Variabel BPS... (Tunggu 10–20 Detik)")
-                    hasil_ai = ekstrak_fenomena_ai(KEYS, hasil_scrape, kategori_pdrb_pilih)
+                    hasil_ai = ekstrak_fenomena_ai(KEYS, hasil_scrape, st.session_state.kategori_pdrb_aktif)
 
                     if hasil_ai["status"] == "error":
                         status_box.update(label="AI Tumbang / Limit Kuota!", state="error")
@@ -1158,7 +1116,17 @@ elif tab_aktif == TAB_LABELS[1]:
         with st.form("form_finalisasi"):
             col1, col2 = st.columns(2)
             with col1:
-                kategori_final = st.text_input("1. Kategori PDRB",     value=_ke_str(data.get("kategori_pdrb", "")))
+                opsi_kat_final = ["— Pilih Kategori —"] + DAFTAR_KATEGORI
+                kategori_dari_ai = data.get("kategori_pdrb", "")
+                index_kat_final = (
+                    opsi_kat_final.index(kategori_dari_ai) if kategori_dari_ai in opsi_kat_final else 0
+                )
+                kategori_final = st.selectbox(
+                    "1. Kategori PDRB", opsi_kat_final, index=index_kat_final,
+                    help="Otomatis ditentukan AI (untuk input URL manual) atau mengikuti kategori Radar. "
+                        "Kalau masih menunjukkan '— Pilih Kategori —', berarti AI gagal menebak — WAJIB dikoreksi manual.",
+                    key="selectbox_kategori_final_ekstraktor"
+                )
                 judul_tgl  = st.text_input("2. Judul & Tanggal Terbit", value=_ke_str(data.get("judul_dan_tanggal", "")))
                 sumber     = st.text_input("3. Sumber & Link Media",    value=_ke_str(data.get("sumber_dan_link", "")))
                 lokasi     = st.text_input("7. Lokasi Spesifik",        value=_ke_str(data.get("lokasi_spesifik", "")))
@@ -1193,8 +1161,9 @@ elif tab_aktif == TAB_LABELS[1]:
                 help="Menyimpan hasil ke database agar laporan bisa didownload.",
                 key="submit_finalisasi"
             )
-
-            if submit:
+            if submit and kategori_final == "— Pilih Kategori —":
+                st.error("⚠️ Pilih dulu Kategori PDRB yang sesuai sebelum finalisasi!")
+            elif submit:
                 model_info = data.get("_model_digunakan", "")
                 tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
                 st.session_state.json_final_siap = {
