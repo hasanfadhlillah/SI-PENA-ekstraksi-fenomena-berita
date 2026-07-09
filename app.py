@@ -22,6 +22,7 @@ from radar.database import (
     simpan_hasil_ekstraksi,
     get_connection,
     reset_total_database,
+    ambil_konten_artikel_tersimpan,
 )
 from radar.pipeline import scan_kategori, batch_scan_semua_kategori, _hitung_triwulan
 from radar.scan_manager import buat_job, tambah_log, set_selesai, set_error, ambil_job, hapus_job, ambil_job_aktif
@@ -1095,8 +1096,24 @@ elif tab_aktif == TAB_LABELS[1]:
             st.session_state.hasil_ekstraksi     = None
             st.session_state.json_final_siap     = None
             with st.status("⚙️ Menjalankan Mesin Ekstraksi Lapis 7...", expanded=True) as status_box:
-                st.write("🕵️‍♂️ 1/2. Membaca situs web via Bypass Scraper...")
-                hasil_scrape = scrape_berita(url_input.strip())
+                konten_cache = ambil_konten_artikel_tersimpan(url_input.strip())
+                if konten_cache:
+                    st.write(
+                        "♻️ 1/2. Memakai teks artikel yang sudah tersimpan dari hasil scan Radar "
+                        "(konsisten dengan yang sudah divalidasi, tidak scrape ulang)..."
+                    )
+                    hasil_scrape = {
+                        "status":               "sukses",
+                        "metode":               "Cache Radar (tersimpan sebelumnya)",
+                        "url":                  url_input.strip(),
+                        "judul":                konten_cache["judul"] or "Judul diekstrak AI",
+                        "tanggal":              "",
+                        "tanggal_pasti_scrape": False,
+                        "teks":                 konten_cache["teks"],
+                    }
+                else:
+                    st.write("🕵️‍♂️ 1/2. Membaca situs web via Bypass Scraper...")
+                    hasil_scrape = scrape_berita(url_input.strip())
                 if hasil_scrape["status"] == "error":
                     status_box.update(label="Scraping Gagal!", state="error")
                     st.error(f"Pesan: {hasil_scrape['pesan']}")

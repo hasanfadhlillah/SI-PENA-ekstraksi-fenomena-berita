@@ -158,6 +158,7 @@ def _jalankan_pipeline_satu_level(
             layak_ekstrak=artikel.get("layak_ekstrak", False),
             level_wilayah=level_cfg["level"],
             sumber_media=sumber_final,
+            teks_artikel=artikel.get("teks", ""),
         )
 
     return lolos

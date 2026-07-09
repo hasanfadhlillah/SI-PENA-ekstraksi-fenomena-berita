@@ -50,7 +50,8 @@ def inisialisasi_database():
             tanggal_ditemukan DATETIME,
             tanggal_diekstrak DATETIME,
             level_wilayah    INTEGER DEFAULT 0,
-            sumber_media     TEXT    DEFAULT ''
+            sumber_media     TEXT    DEFAULT '',
+            teks_artikel     TEXT    DEFAULT ''
         )
     """)
     # Migrasi otomatis untuk DB lama yang belum punya kolom ini
@@ -62,6 +63,9 @@ def inisialisasi_database():
     if "sumber_media" not in kolom_ada:
         cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN sumber_media TEXT DEFAULT ''")
         logger.info("[Database] Migrasi: kolom 'sumber_media' ditambahkan ke riwayat_artikel.")
+    if "teks_artikel" not in kolom_ada:
+        cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN teks_artikel TEXT DEFAULT ''")
+        logger.info("[Database] Migrasi: kolom 'teks_artikel' ditambahkan ke riwayat_artikel.")
     
     # ── Migrasi tabel hasil_ekstraksi: tema_topik -> kategori_pdrb ──
     cursor.execute("PRAGMA table_info(hasil_ekstraksi)")
@@ -137,6 +141,7 @@ def simpan_artikel(
     layak_ekstrak: bool,
     level_wilayah: int = 0,
     sumber_media: str = "",
+    teks_artikel: str = "",
 ):
     """Menyimpan artikel baru ke database."""
     conn = get_connection()
@@ -147,8 +152,8 @@ def simpan_artikel(
             INSERT INTO riwayat_artikel
             (url_berita, judul_berita, kategori_pdrb, triwulan,
              skor_relevansi, alasan_ai, ada_data_angka, ada_perbandingan,
-             relevan_kategori, status, tanggal_ditemukan, level_wilayah, sumber_media)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             relevan_kategori, status, tanggal_ditemukan, level_wilayah, sumber_media, teks_artikel)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url_berita) DO UPDATE SET
                 judul_berita = excluded.judul_berita,
                 kategori_pdrb = excluded.kategori_pdrb,
@@ -161,16 +166,42 @@ def simpan_artikel(
                 status = excluded.status,
                 tanggal_ditemukan = excluded.tanggal_ditemukan,
                 level_wilayah = excluded.level_wilayah,
-                sumber_media = excluded.sumber_media
+                sumber_media = excluded.sumber_media,
+                teks_artikel = CASE
+                    WHEN excluded.teks_artikel != '' THEN excluded.teks_artikel
+                    ELSE riwayat_artikel.teks_artikel
+                END
         """, (
             url, judul, kategori, triwulan,
             skor, alasan,
             int(ada_data_angka), int(ada_perbandingan), int(relevan_kategori),
-            status, datetime.now().isoformat(), level_wilayah, sumber_media
+            status, datetime.now().isoformat(), level_wilayah, sumber_media, teks_artikel
         ))
         conn.commit()
     finally:
         conn.close()
+
+
+def ambil_konten_artikel_tersimpan(url: str) -> dict | None:
+    """
+    Fungsi ini menggunakan kembali judul dan teks lengkap dari hasil scrape radar screening 
+    pada Tab Ekstraktor demi konsistensi data dan efisiensi proses. Langkah ini mencegah 
+    scraping ulang yang tidak deterministik sekaligus menghemat waktu round-trip.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT judul_berita, teks_artikel FROM riwayat_artikel
+        WHERE url_berita = ?
+    """, (url,))
+    baris = cursor.fetchone()
+    conn.close()
+    if not baris:
+        return None
+    judul, teks = baris["judul_berita"], baris["teks_artikel"]
+    if not teks or len(teks.strip()) < 500:
+        return None
+    return {"judul": judul or "", "teks": teks}
 
 
 def tandai_artikel_diekstrak(url: str):

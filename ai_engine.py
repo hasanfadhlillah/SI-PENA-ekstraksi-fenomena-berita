@@ -1,12 +1,13 @@
 # File: ai_engine.py
 import json
 import time
+import re
 import openai
 from groq import Groq
 from google import genai as google_genai
 from google.genai import types as google_types
 from radar.model_stack import (
-    AI_MODEL_CATALOG as MODEL_STACK,
+    AI_MODEL_CATALOG_EKSTRAKSI as MODEL_STACK,
     MAX_TOKENS_EKSTRAKSI,
     format_model_404_message,
 )
@@ -14,31 +15,57 @@ from radar.config import DAFTAR_KATEGORI_PDRB
 from radar.logger_config import get_logger
 logger = get_logger(__name__)
 
-# Field yang WAJIB selalu terisi dari artikel manapun (bersifat deskriptif
-# dasar, bukan data yang mungkin memang tidak ada di teks). Kalau salah satu
-# masih "Tidak ada informasi" setelah jawaban pertama AI, sistem otomatis
-# retry SEKALI khusus meminta field ini diperbaiki -- lihat ekstrak_fenomena_ai.
+# Field deskriptif dasar yang wajib terisi. Jika nilainya "Tidak ada informasi" 
+# pada respons pertama AI, sistem otomatis memicu 1x retry khusus untuk field ini.
 FIELD_WAJIB_TERISI = [
     "judul_dan_tanggal", "sumber_dan_link", "ringkasan_fenomena",
     "kata_kunci", "sentimen_dampak",
 ]
 _NILAI_KOSONG = {"", "tidak ada informasi", "tidak diketahui", "-", "n/a", "none", "null"}
 
-def _cek_field_kosong(hasil: dict) -> list[str]:
-    """Return daftar key dari FIELD_WAJIB_TERISI yang isinya masih kosong/'Tidak ada informasi'."""
+# Safety-net berbasis regex (bukan AI) untuk mendeteksi pola angka/kutipan di teks sumber.
+# Digunakan untuk menangkap kasus di mana AI melewatkan data yang sebenarnya tersedia.
+_POLA_ANGKA_KUAT = re.compile(
+    r'(rp\s?[\d.,]+|\b\d+([.,]\d+)?\s?(persen|%|ton|kuintal|kg|kilogram|hektar|\bha\b|juta|miliar|triliun|ribu|orang|unit|ekor))',
+    re.IGNORECASE
+)
+_POLA_KUTIPAN_KUAT = re.compile(r'[“"][^"”]{20,}[”"]')
+
+def _ada_indikasi_data_angka(teks: str) -> bool:
+    return bool(_POLA_ANGKA_KUAT.search(teks or ""))
+
+def _ada_indikasi_kutipan(teks: str) -> bool:
+    return bool(_POLA_KUTIPAN_KUAT.search(teks or ""))
+
+def _cek_field_kosong(hasil: dict, teks: str = "") -> list[str]:
+    """
+    Return daftar field wajib atau yang terindikasi terlewat oleh AI untuk di-retry.
+    Validasi dilakukan dalam 2 lapis:
+    1. FIELD_WAJIB_TERISI: Field dasar yang tidak boleh kosong dalam kondisi apa pun.
+    2. Heuristik Sumber: Field angka/kutipan yang aslinya kosong, tetapi dipaksa retry 
+    jika pola (Rp, %, kata kunci kutipan) terdeteksi ada di teks sumber.
+    """
     kosong = []
     for f in FIELD_WAJIB_TERISI:
         nilai = str(hasil.get(f, "")).strip().lower()
         if nilai in _NILAI_KOSONG:
             kosong.append(f)
+
+    nilai_angka = str(hasil.get("data_angka", "")).strip().lower()
+    if nilai_angka in _NILAI_KOSONG and _ada_indikasi_data_angka(teks):
+        kosong.append("data_angka")
+
+    nilai_kutipan = str(hasil.get("kutipan_tokoh", "")).strip().lower()
+    if nilai_kutipan in _NILAI_KOSONG and _ada_indikasi_kutipan(teks):
+        kosong.append("kutipan_tokoh")
+
     return kosong
 
 def _cocokkan_kategori_terdekat(kategori_ai: str) -> str | None:
     """
-    Validasi jawaban kategori_pdrb dari AI terhadap 51 daftar resmi.
-    Exact match dulu, baru fallback ke substring match (menangani kasus AI
-    menjawab dengan sedikit variasi kapitalisasi/spasi). Return None kalau
-    benar-benar tidak ada yang cocok -- dibiarkan kosong untuk dikoreksi staf.
+    Validasi kategori_pdrb dari AI terhadap 51 daftar resmi.
+    Menggunakan exact match terlebih dahulu, lalu fallback ke substring match 
+    untuk mengatasi variasi teks/kapitalisasi. Mengembalikan None jika tidak cocok.
     """
     if not kategori_ai:
         return None
@@ -145,6 +172,8 @@ def _buat_prompt_koreksi(data_artikel: dict, max_chars: int, field_kosong: list[
         "ringkasan_fenomena":"ringkasan_fenomena (4-5 kalimat inti fenomena di artikel)",
         "kata_kunci":        "kata_kunci (3-5 hashtag relevan)",
         "sentimen_dampak":   "sentimen_dampak (pilih persis: Positif / Negatif / Netral)",
+        "data_angka":        "data_angka (SEMUA nilai angka: harga Rp, persentase %, berat kg/ton, dsb -- SISIR ULANG teks kalimat demi kalimat dari awal sampai akhir, jangan lewatkan satupun)",
+        "kutipan_tokoh":     "kutipan_tokoh (SEMUA kalimat kutipan langsung bertanda kutip \"...\" atau didahului/diikuti kata ujarnya/katanya/ucapnya/imbuhnya dsb -- salin PERSIS kalimatnya, sertakan nama & jabatan narasumber jika disebutkan)",
     }
     daftar_diminta = "\n".join(f'        - "{f}": {label_field.get(f, f)}' for f in field_kosong)
     return f"""
@@ -322,20 +351,23 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict, kategori_pdrb: str = "")
                         )
                         hasil["kategori_pdrb"] = ""
 
-                # ── Safety-net: pastikan field WAJIB tidak "Tidak ada informasi" ──
-                field_kosong = _cek_field_kosong(hasil)
+                # Safety-net: Pemicu retry jika field wajib kosong, atau jika regex mendeteksi 
+                # adanya data angka/kutipan yang terlewat oleh AI (via _cek_field_kosong()).
+                teks_sumber = data_artikel.get("teks", "")
+                field_kosong = _cek_field_kosong(hasil, teks_sumber)
                 if field_kosong:
-                    logger.warning(f"[Koreksi] {cfg['nama']}: field wajib kosong {field_kosong}, retry sekali...")
+                    logger.warning(f"[Koreksi] {cfg['nama']}: field kosong {field_kosong}, retry sekali...")
                     try:
+                        max_tokens_koreksi = 2500 if any(f in field_kosong for f in ("data_angka", "kutipan_tokoh")) else 1500
                         prompt_koreksi = _buat_prompt_koreksi(data_artikel, cfg["max_chars"], field_kosong)
-                        teks_koreksi = _panggil_model(provider, api_key, cfg["model_id"], prompt_koreksi, cfg, max_tokens=1500)
+                        teks_koreksi = _panggil_model(provider, api_key, cfg["model_id"], prompt_koreksi, cfg, max_tokens=max_tokens_koreksi)
                         teks_koreksi_bersih = teks_koreksi.strip().replace('```json', '').replace('```', '').strip()
                         hasil_koreksi = json.loads(teks_koreksi_bersih)
                         for f in field_kosong:
                             nilai_baru = str(hasil_koreksi.get(f, "")).strip()
                             if nilai_baru and nilai_baru.lower() not in _NILAI_KOSONG:
                                 hasil[f] = nilai_baru
-                        sisa_kosong = _cek_field_kosong(hasil)
+                        sisa_kosong = _cek_field_kosong(hasil, teks_sumber)
                         if sisa_kosong:
                             logger.warning(f"[Koreksi Belum Tuntas] {cfg['nama']}: field {sisa_kosong} masih kosong walau sudah di-retry.")
                         else:
