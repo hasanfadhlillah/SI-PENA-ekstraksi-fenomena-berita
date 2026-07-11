@@ -280,7 +280,8 @@ def batch_scan_semua_kategori(
     paksa_proses_ulang: bool = False,
     scan_semua_level: bool = False,
     target_minimal: int = DEFAULT_TARGET_MINIMAL,
-    callback_progress=None
+    callback_progress=None,
+    callback_mulai_kategori=None,
 ) -> dict:
     """
     Scan semua kategori PDRB secara berurutan.
@@ -295,6 +296,8 @@ def batch_scan_semua_kategori(
 
     for i, kategori in enumerate(daftar_kategori, 1):
         logger.info(f"[{i}/{len(daftar_kategori)}] ▶ {kategori}")
+        if callback_mulai_kategori:
+            callback_mulai_kategori(kategori, i, len(daftar_kategori))
         hasil = scan_kategori(
             kategori,
             tanggal_mulai,

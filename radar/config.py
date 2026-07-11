@@ -7,6 +7,10 @@ DEFAULT_MIN_SKOR = 6
 
 DEFAULT_TARGET_MINIMAL = 5
 
+# Batas maksimal proses SCAN paralel global (lintas user) untuk mencegah 
+# overload server Hugging Face Spaces gratis, dikombinasikan dengan lock per-kategori.
+MAKSIMAL_SCAN_BERSAMAAN = 3
+
 # Daftar 51 kategori PDRB resmi BPS
 DAFTAR_KATEGORI_PDRB = [
     "Tanaman Pangan", "Tanaman Hortikultura Semusim", "Perkebunan Semusim",
