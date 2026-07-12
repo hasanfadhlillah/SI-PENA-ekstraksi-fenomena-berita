@@ -785,9 +785,7 @@ if tab_aktif == TAB_LABELS[0]:
         # ── Registry GLOBAL semua scan yang sedang berjalan (lintas semua user/sesi) ──
         jobs_aktif_global = ambil_semua_job_aktif()
 
-        # Ambil 'kategori_sekarang' (bukan label umum) khusus untuk Batch Scan.
-        # Ini memastikan lock berlaku presisi pada kategori yang sedang berjalan, 
-        # sehingga kategori lain tetap bebas di-scan oleh user lain secara paralel.
+        # Lock presisi: ambil kategori spesifik Batch Scan agar kategori lain tetap bisa di-scan paralel.
         kategori_terkunci = set()
         ada_batch_aktif = False
         for j in jobs_aktif_global:
@@ -800,8 +798,7 @@ if tab_aktif == TAB_LABELS[0]:
 
         kuota_penuh = len(jobs_aktif_global) >= MAKSIMAL_SCAN_BERSAMAAN
 
-        # Banner status scan aktif untuk semua user (SI-PENA tidak memiliki sistem login),
-        # dilengkapi tombol "Pantau" untuk mengintip live log dari sesi mana pun.
+        # Banner aktivitas global tanpa login + tombol "Pantau" live log lintas sesi.
         if jobs_aktif_global:
             st.info(f"🔄 **{len(jobs_aktif_global)}/{MAKSIMAL_SCAN_BERSAMAAN} slot scan sedang terpakai:**")
             for j in jobs_aktif_global:
@@ -961,9 +958,7 @@ if tab_aktif == TAB_LABELS[0]:
                             for s in hasil.get("saran_sumber", []):
                                 st.markdown(f"- [{s}](https://{s})")
                 if st.button("✖️ Tutup Hasil Ini", key="btn_tutup_hasil_scan"):
-                    # Cukup lepas referensi di sesi ini tanpa memanggil `hapus_job()`. 
-                    # Hal ini mencegah kehilangan data mendadak pada sesi lain yang sedang ikut 
-                    # memantau (via tombol 👁️), dan membiarkan housekeeping menghapusnya otomatis setelah 1 jam.
+                    # Lepas referensi lokal saja tanpa `hapus_job()` agar sesi lain (tombol 👁️) tidak kehilangan data.
                     st.session_state.job_id_scan = None
                     st.session_state.job_kategori_scan = None
                     st.rerun()
@@ -1201,7 +1196,7 @@ elif tab_aktif == TAB_LABELS[1]:
                 kategori_final = st.selectbox(
                     "1. Kategori PDRB", opsi_kat_final, index=index_kat_final,
                     help="Otomatis ditentukan AI (untuk input URL manual) atau mengikuti kategori Radar. "
-                        "Kalau masih menunjukkan '— Pilih Kategori —', berarti AI gagal menebak — WAJIB dikoreksi manual.",
+                        "Kalau masih menunjukkan 'Pilih Kategori', berarti AI gagal menebak — WAJIB dikoreksi manual.",
                     key="selectbox_kategori_final_ekstraktor"
                 )
                 judul_tgl  = st.text_input("2. Judul & Tanggal Terbit", value=_ke_str(data.get("judul_dan_tanggal", "")))
@@ -1259,9 +1254,7 @@ elif tab_aktif == TAB_LABELS[1]:
                     "_waktu_ekstraksi"     : datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "_model_digunakan"     : model_info,
                 }
-                # Simpan DULU ke database sebelum membersihkan session state --
-                # kalau gagal, hasil edit manual staf TIDAK hilang dan bisa
-                # langsung coba tekan Finalisasi lagi tanpa mengulang dari nol.
+                # Simpan ke DB sebelum bersihkan sesi; jika gagal, hasil edit staf tidak hilang.
                 berhasil_simpan = simpan_hasil_ekstraksi(
                     url=st.session_state.ekstraksi_url_aktif,
                     json_final=json_final_baru
