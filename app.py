@@ -37,6 +37,7 @@ from radar.backup import (
     pulihkan_keywords_dari_upload,
     auto_restore_dari_hf_dataset,
     force_backup_ke_hf_dataset,
+    auto_backup_ke_hf_dataset,
 )
 from scraper import scrape_berita
 from ai_engine import ekstrak_fenomena_ai
@@ -552,6 +553,7 @@ with st.sidebar:
             if st.button("♻️ Pulihkan Sekarang", key="btn_restore_keywords"):
                 berhasil, pesan = pulihkan_keywords_dari_upload(file_restore.read())
                 if berhasil:
+                    force_backup_ke_hf_dataset()
                     st.success(pesan)
                     st.rerun()
                 else:
@@ -1089,6 +1091,7 @@ if tab_aktif == TAB_LABELS[0]:
                                      help="Buang artikel ini dari antrean.",
                                      disabled=_sedang_scan):
                             tandai_artikel_ditolak(art["url_berita"])
+                            auto_backup_ke_hf_dataset()
                             st.toast("Artikel dibuang ke tempat sampah.", icon="🗑️")
                             time.sleep(0.5)
                             st.rerun()
@@ -1239,8 +1242,7 @@ elif tab_aktif == TAB_LABELS[1]:
                 st.error("⚠️ Pilih dulu Kategori PDRB yang sesuai sebelum finalisasi!")
             elif submit:
                 model_info = data.get("_model_digunakan", "")
-                tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
-                st.session_state.json_final_siap = {
+                json_final_baru = {
                     "kategori_pdrb"        : kategori_final,
                     "judul_dan_tanggal"    : judul_tgl,
                     "sumber_dan_link"      : sumber,
@@ -1257,22 +1259,40 @@ elif tab_aktif == TAB_LABELS[1]:
                     "_waktu_ekstraksi"     : datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "_model_digunakan"     : model_info,
                 }
-                st.session_state.target_url      = ""
-                st.session_state.hasil_ekstraksi = None
-
-                simpan_hasil_ekstraksi(
+                # Simpan DULU ke database sebelum membersihkan session state --
+                # kalau gagal, hasil edit manual staf TIDAK hilang dan bisa
+                # langsung coba tekan Finalisasi lagi tanpa mengulang dari nol.
+                berhasil_simpan = simpan_hasil_ekstraksi(
                     url=st.session_state.ekstraksi_url_aktif,
-                    json_final=st.session_state.json_final_siap
+                    json_final=json_final_baru
                 )
-
-                # ── Pop-up & banner notifikasi ───────────
-                st.toast("Hasil ekstraksi berhasil disimpan ke database!", icon="✅")
-                st.success(
-                    "🎉 **Berhasil difinalisasi!** Hasil ekstraksi ini sudah tersimpan secara otomatis.\n\n"
-                    "📦 Temukan di tab **🗄️ HISTORY BERITA** → bagian *'Download Semua Hasil Ekstraksi (Massal)'* "
-                    "— bisa diunduh sekaligus dalam format **Excel, CSV, atau JSON**.\n\n"
-                    "⬇️ Untuk mengunduh artikel ini saja, gunakan tombol download di bawah."
-                )
+                if berhasil_simpan:
+                    tandai_artikel_diekstrak(st.session_state.ekstraksi_url_aktif)
+                    st.session_state.json_final_siap = json_final_baru
+                    st.session_state.target_url      = ""
+                    st.session_state.hasil_ekstraksi = None
+                    berhasil_backup = force_backup_ke_hf_dataset()
+                    st.toast("Hasil ekstraksi berhasil disimpan ke database!", icon="✅")
+                    if berhasil_backup:
+                        st.toast("💾 Otomatis ter-backup ke HF Dataset!", icon="☁️")
+                    else:
+                        st.toast(
+                            "⚠️ Backup otomatis ke HF Dataset gagal/belum aktif — "
+                            "segera unduh backup manual di sidebar supaya tidak hilang!",
+                            icon="⚠️"
+                        )
+                    st.success(
+                        "🎉 **Berhasil difinalisasi!** Hasil ekstraksi ini sudah tersimpan secara otomatis.\n\n"
+                        "📦 Temukan di tab **🗄️ HISTORY BERITA** → bagian *'Download Semua Hasil Ekstraksi (Massal)'* "
+                        "— bisa diunduh sekaligus dalam format **Excel, CSV, atau JSON**.\n\n"
+                        "⬇️ Untuk mengunduh artikel ini saja, gunakan tombol download di bawah."
+                    )
+                else:
+                    st.error(
+                        "❌ **Gagal menyimpan hasil ekstraksi ke database!** Hasil edit kamu di atas "
+                        "TIDAK hilang — coba tekan tombol **FINALISASI & TANDAI SELESAI** sekali lagi. "
+                        "Kalau masih gagal terus, screenshot pesan ini dan laporkan ke pengembang."
+                    )
 
     # ── DOWNLOAD BUTTONS — DI LUAR FORM ──
     if st.session_state.json_final_siap:
@@ -1594,10 +1614,8 @@ elif tab_aktif == TAB_LABELS[3]:
 elif tab_aktif == TAB_LABELS[4]:
     st.markdown("## ⚙️ Manajemen Keyword Pencarian")
     st.caption("Tambah, ubah, atau hapus keyword untuk setiap kategori PDRB. Perubahan langsung aktif tanpa restart.")
-
     kw_data = _load_keywords()
     kat_edit = st.selectbox("Pilih Kategori untuk Diedit:", list(kw_data.keys()), key="selectbox_kat_edit")
-
     if kat_edit:
         col_m, col_j, col_n = st.columns(3)
         level_map = {
@@ -1618,13 +1636,20 @@ elif tab_aktif == TAB_LABELS[4]:
                     help="Satu keyword per baris. Hapus baris untuk menghapus keyword."
                 )
                 new_keywords[key] = [k.strip() for k in edited.split("\n") if k.strip()]
-
         if st.button("💾 Simpan Perubahan", type="primary", width='stretch', key="btn_simpan_keyword"):
             kw_data[kat_edit] = new_keywords
             _save_keywords(kw_data)
+            berhasil_backup = force_backup_ke_hf_dataset()
             st.success(f"✅ Keyword untuk '{kat_edit}' berhasil disimpan!")
+            if berhasil_backup:
+                st.toast("💾 Otomatis ter-backup ke HF Dataset!", icon="☁️")
+            else:
+                st.toast(
+                    "⚠️ Backup otomatis ke HF Dataset gagal/belum aktif — "
+                    "unduh backup manual di sidebar agar tidak hilang.",
+                    icon="⚠️"
+                )
             st.rerun()
-
     st.markdown("---")
     st.markdown("**➕ Tambah Kategori Baru**")
     nama_baru = st.text_input("Nama Kategori Baru:", key="text_nama_baru")
@@ -1633,7 +1658,10 @@ elif tab_aktif == TAB_LABELS[4]:
         if nama_baru not in kw_data:
             kw_data[nama_baru] = {"magelang": [], "jateng": [], "nasional": []}
             _save_keywords(kw_data)
+            berhasil_backup = force_backup_ke_hf_dataset()
             st.success(f"✅ Kategori '{nama_baru}' ditambahkan! Pilih dari dropdown di atas untuk mengisi keyword-nya.")
+            if berhasil_backup:
+                st.toast("💾 Otomatis ter-backup ke HF Dataset!", icon="☁️")
             st.rerun()
         else:
             st.warning("Kategori sudah ada.")

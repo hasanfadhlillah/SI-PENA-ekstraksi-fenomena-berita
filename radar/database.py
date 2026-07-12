@@ -376,7 +376,7 @@ def ambil_semua_status_kategori(triwulan: str) -> list[dict]:
     return hasil
 
 
-def simpan_hasil_ekstraksi(url: str, json_final: dict):
+def simpan_hasil_ekstraksi(url: str, json_final: dict) -> bool:
     """Simpan variabel hasil ekstraksi ke tabel hasil_ekstraksi."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -421,8 +421,10 @@ def simpan_hasil_ekstraksi(url: str, json_final: dict):
             str(json_final.get("_model_digunakan", "")),
         ))
         conn.commit()
+        return True
     except Exception as e:
         logger.error(f"[DB] Gagal simpan hasil ekstraksi untuk {url[:50]}: {e}")
+        return False
     finally:
         conn.close()
         

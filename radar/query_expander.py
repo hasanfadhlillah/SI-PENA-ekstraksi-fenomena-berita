@@ -128,12 +128,15 @@ ATURAN PENTING:
         )
         hasil_ai = json.loads(resp.choices[0].message.content)
         hasil_ai = _perbarui_tahun_keywords_dict(hasil_ai)
-
         kw_data = _load_keywords()
         kw_data[nama_kategori] = hasil_ai
         _save_keywords(kw_data)
         logger.info(f"Hasil AI untuk '{nama_kategori}' berhasil disimpan ke keywords.json")
-
+        try:
+            from .backup import auto_backup_ke_hf_dataset
+            auto_backup_ke_hf_dataset()
+        except Exception as e_backup:
+            logger.debug(f"[Keywords] Auto-backup setelah AI fallback dilewati: {e_backup}")
         return hasil_ai
 
     except Exception as e:
