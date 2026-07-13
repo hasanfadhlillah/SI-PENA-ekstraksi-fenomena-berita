@@ -667,12 +667,13 @@ tab_aktif = st.radio(
 # ═══════════════════════════════════════════════════════════════════════════════
 if tab_aktif == TAB_LABELS[0]:
     with st.expander("📖 Panduan Penggunaan Tab Radar Berita", expanded=False):
-        st.markdown("""
+        st.markdown(f"""
         **Fungsi Tab Ini:** Tempat Anda memantau dan memburu berita fenomena ekonomi secara otomatis dari internet.
         1. **⚙️ Atur Dahulu di Sidebar:** Pastikan **Rentang Waktu Pencarian** (Dari Tanggal & Sampai Tanggal) dan **Pengaturan AI Radar** (Skor Minimum Lolos, toggle Proses Ulang Artikel Lama, toggle Scan Semua Level Wilayah) di sidebar sudah sesuai kebutuhan — pengaturan ini menentukan periode berita yang dicari dan seberapa ketat AI menyaring hasilnya.
         2. **Jalankan Radar:** Pilih salah satu kategori, lalu klik tombol **▶ SCAN**. Mesin akan mencari berita, lalu AI akan menyaring berita yang tidak relevan.
         3. **Status Kategori PDRB:** Menampilkan ringkasan kategori mana yang sudah punya berita (Aman) dan mana yang kosong (Buntu).
         4. **Hasil Scan Radar Berita:** Setelah scan selesai, berita yang lolos akan muncul di sini. Klik **🚀 Ekstrak Berita Ini** untuk membedah artikel tersebut di Tab 2.
+        5. **🔀 Bisa Dipakai Bersamaan:** Sampai **{MAKSIMAL_SCAN_BERSAMAAN} orang boleh scan bersamaan**, asal kategorinya berbeda-beda. Kalau kategori yang kamu pilih sedang dikerjakan orang lain, tombol SCAN otomatis terkunci sampai selesai — lihat kotak "ℹ️ Cara Kerja Sistem Multi-Sesi" di bawah tombol SCAN untuk detailnya.
         """)
 
     # ── Kriteria & Sistem Skoring ────────────────────────────
@@ -781,6 +782,28 @@ if tab_aktif == TAB_LABELS[0]:
 
     with st.container(border=True):
         st.markdown("#### 🚀 Jalankan Radar")
+        st.caption(
+            f"🔀 Sistem Multi-Sesi aktif — hingga **{MAKSIMAL_SCAN_BERSAMAAN} scan** boleh berjalan "
+            f"bersamaan dari user/perangkat berbeda, asal kategorinya berbeda."
+        )
+        with st.expander("ℹ️ Cara Kerja Sistem Multi-Sesi Radar", expanded=False):
+            st.markdown(f"""
+            SI-PENA mendukung **beberapa staf memindai bersamaan** tanpa saling mengganggu, lewat 2 aturan:
+            1. **Kuota Global — maksimal {MAKSIMAL_SCAN_BERSAMAAN} scan berjalan bersamaan.**
+               Ini menjaga server (Hugging Face Spaces tier gratis) tidak kelebihan beban, dan kuota
+               API Key AI tidak cepat habis kalau banyak orang scan di waktu yang sama.
+            2. **Kunci per-kategori — 1 kategori PDRB cuma boleh di-scan 1 orang dalam satu waktu.**
+               Kalau kategori "Peternakan" sedang di-scan orang lain, kamu tetap bisa scan kategori
+               lain ("Tanaman Pangan", "Konstruksi", dst.) di saat bersamaan — cuma kategori yang
+               PERSIS SAMA yang dikunci, supaya tidak ada 2 proses menimpa data triwulan yang sama.
+               Aturan ini juga berlaku untuk **Batch Scan**: kategori yang SEDANG diproses di
+               dalamnya ikut terkunci sementara, tapi kategori lain di luar itu tetap bebas dipakai
+               user lain.
+
+            💡 **Refresh halaman atau pindah tab itu aman** — proses scan tetap berjalan di server,
+            tidak ter-cancel. Kalau tampilan progress-nya hilang, cari tombol **👁️ Pantau** di daftar
+            "scan sedang berjalan" untuk menyambungkan kembali live log-nya, dari sesi manapun.
+            """)
 
         # ── Registry GLOBAL semua scan yang sedang berjalan (lintas semua user/sesi) ──
         jobs_aktif_global = ambil_semua_job_aktif()
