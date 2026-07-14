@@ -159,6 +159,7 @@ def _jalankan_pipeline_satu_level(
             level_wilayah=level_cfg["level"],
             sumber_media=sumber_final,
             teks_artikel=artikel.get("teks", ""),
+            wilayah_valid=artikel.get("wilayah_valid", True),
         )
 
     return lolos

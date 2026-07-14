@@ -335,7 +335,10 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict, kategori_pdrb: str = "")
                 teks_json = _panggil_model(provider, api_key, cfg["model_id"], prompt, cfg, max_tokens)
                 teks_bersih = teks_json.strip().replace('```json', '').replace('```', '').strip()
                 hasil = json.loads(teks_bersih)
-
+                if not isinstance(hasil, dict):
+                    raise ValueError(
+                        f"AI mengembalikan JSON bertipe {type(hasil).__name__}, seharusnya objek/dict"
+                    )
                 # ── Tentukan/validasi kategori_pdrb ──
                 if kategori_pdrb:
                     hasil["kategori_pdrb"] = kategori_pdrb   # dari input pasti, override apapun jawaban AI
@@ -363,6 +366,10 @@ def ekstrak_fenomena_ai(keys: dict, data_artikel: dict, kategori_pdrb: str = "")
                         teks_koreksi = _panggil_model(provider, api_key, cfg["model_id"], prompt_koreksi, cfg, max_tokens=max_tokens_koreksi)
                         teks_koreksi_bersih = teks_koreksi.strip().replace('```json', '').replace('```', '').strip()
                         hasil_koreksi = json.loads(teks_koreksi_bersih)
+                        if not isinstance(hasil_koreksi, dict):
+                            raise ValueError(
+                                f"AI (koreksi) mengembalikan JSON bertipe {type(hasil_koreksi).__name__}, seharusnya objek/dict"
+                            )
                         for f in field_kosong:
                             nilai_baru = str(hasil_koreksi.get(f, "")).strip()
                             if nilai_baru and nilai_baru.lower() not in _NILAI_KOSONG:

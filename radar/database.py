@@ -66,6 +66,9 @@ def inisialisasi_database():
     if "teks_artikel" not in kolom_ada:
         cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN teks_artikel TEXT DEFAULT ''")
         logger.info("[Database] Migrasi: kolom 'teks_artikel' ditambahkan ke riwayat_artikel.")
+    if "wilayah_valid" not in kolom_ada:
+        cursor.execute("ALTER TABLE riwayat_artikel ADD COLUMN wilayah_valid INTEGER DEFAULT 1")
+        logger.info("[Database] Migrasi: kolom 'wilayah_valid' ditambahkan ke riwayat_artikel.")
     
     # ── Migrasi tabel hasil_ekstraksi: tema_topik -> kategori_pdrb ──
     cursor.execute("PRAGMA table_info(hasil_ekstraksi)")
@@ -142,6 +145,7 @@ def simpan_artikel(
     level_wilayah: int = 0,
     sumber_media: str = "",
     teks_artikel: str = "",
+    wilayah_valid: bool = True,
 ):
     """Menyimpan artikel baru ke database."""
     conn = get_connection()
@@ -152,8 +156,9 @@ def simpan_artikel(
             INSERT INTO riwayat_artikel
             (url_berita, judul_berita, kategori_pdrb, triwulan,
              skor_relevansi, alasan_ai, ada_data_angka, ada_perbandingan,
-             relevan_kategori, status, tanggal_ditemukan, level_wilayah, sumber_media, teks_artikel)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             relevan_kategori, status, tanggal_ditemukan, level_wilayah, sumber_media, teks_artikel,
+             wilayah_valid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url_berita) DO UPDATE SET
                 judul_berita = excluded.judul_berita,
                 kategori_pdrb = excluded.kategori_pdrb,
@@ -167,6 +172,7 @@ def simpan_artikel(
                 tanggal_ditemukan = excluded.tanggal_ditemukan,
                 level_wilayah = excluded.level_wilayah,
                 sumber_media = excluded.sumber_media,
+                wilayah_valid = excluded.wilayah_valid,
                 teks_artikel = CASE
                     WHEN excluded.teks_artikel != '' THEN excluded.teks_artikel
                     ELSE riwayat_artikel.teks_artikel
@@ -175,7 +181,8 @@ def simpan_artikel(
             url, judul, kategori, triwulan,
             skor, alasan,
             int(ada_data_angka), int(ada_perbandingan), int(relevan_kategori),
-            status, datetime.now().isoformat(), level_wilayah, sumber_media, teks_artikel
+            status, datetime.now().isoformat(), level_wilayah, sumber_media, teks_artikel,
+            int(wilayah_valid),
         ))
         conn.commit()
     finally:

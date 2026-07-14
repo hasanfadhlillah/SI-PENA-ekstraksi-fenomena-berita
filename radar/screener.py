@@ -59,12 +59,9 @@ def _validasi_wilayah_programatik(judul: str, teks: str, wilayah: str) -> bool |
     return None
 
 
-def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
-    """
-    Menjalankan request AI dengan fallback stack dan API Key Pooling.
-    """
+def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[dict, str]:
+    """Eksekusi request AI via fallback stack & API key pooling, termasuk parsing & validasi JSON otomatis di dalam loop agar kegagalan parse memicu retry model berikutnya."""
     import random
-
     for cfg in SCREENER_STACK:
         provider = cfg["provider"]
         model_id = cfg["model_id"]
@@ -72,12 +69,11 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
         pool_keys = [k.strip() for k in api_key_raw.split(",") if k.strip()]
         if not pool_keys:
             continue
-
         max_tokens = MAX_TOKENS_SCREENING.get(provider, 2000)
-
         random.shuffle(pool_keys)
         for idx, api_key in enumerate(pool_keys):
             try:
+                teks = None
                 if provider == "groq":
                     client = Groq(api_key=api_key)
                     groq_kwargs = dict(
@@ -96,8 +92,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     teks = resp.choices[0].message.content
                     if teks is None or teks.strip() == "":
                         raise ValueError("Groq mengembalikan respons kosong")
-                    return teks, cfg["nama"]
-
                 elif provider == "gemini":
                     client = google_genai.Client(api_key=api_key)
                     gabung = f"SYSTEM: Validator berita BPS. Balas HANYA JSON murni.\n\nUSER: {prompt}"
@@ -117,8 +111,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     teks = resp.text if resp.text is not None else ""
                     if teks.strip() == "":
                         raise ValueError("Gemini mengembalikan respons kosong")
-                    return teks, cfg["nama"]
-
                 elif provider == "cerebras":
                     client = openai.OpenAI(
                         api_key=api_key,
@@ -140,8 +132,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     teks = resp.choices[0].message.content
                     if teks is None or teks.strip() == "":
                         raise ValueError("Cerebras mengembalikan respons kosong")
-                    return teks, cfg["nama"]
-
                 elif provider == "mistral":
                     client = openai.OpenAI(
                         api_key=api_key,
@@ -160,8 +150,15 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                     teks = resp.choices[0].message.content
                     if teks is None or teks.strip() == "":
                         raise ValueError("Mistral mengembalikan respons kosong")
-                    return teks, cfg["nama"]
-
+                else:
+                    continue
+                teks_bersih = teks.strip().replace('```json', '').replace('```', '').strip()
+                hasil = json.loads(teks_bersih)
+                if not isinstance(hasil, dict):
+                    raise ValueError(
+                        f"AI mengembalikan JSON bertipe {type(hasil).__name__}, seharusnya objek/dict"
+                    )
+                return hasil, cfg["nama"]
             except Exception as e:
                 err = str(e).lower()
                 is_limit = any(k in err for k in [
@@ -170,7 +167,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                 ])
                 is_not_found = "404" in err or "not found" in err
                 is_payload_besar = "413" in err or "too large" in err 
-
                 if is_limit:
                     logger.warning(f"[Limit] Kunci ke-{idx+1} habis untuk {cfg['nama']}! Coba Kunci Cadangan {provider}...")
                     time.sleep(1)
@@ -184,7 +180,6 @@ def _call_ai_screening(api_keys: dict, prompt: str) -> tuple[str, str]:
                 else:
                     logger.error(f"[Error] {cfg['nama']}: {err[:120]}")
                     break
-
     raise Exception("Semua model dan puluhan API Key error atau habis kuota. Coba lagi besok.")
 
 
@@ -310,9 +305,7 @@ def screening_satu_artikel(
         ATURAN: Jangan pernah membuat-buat data (No Hallucination).
         """
     try:
-        teks_json, model_terpakai = _call_ai_screening(api_keys, prompt)
-        teks_json = teks_json.strip().replace('```json', '').replace('```', '').strip()
-        hasil = json.loads(teks_json)
+        hasil, model_terpakai = _call_ai_screening(api_keys, prompt)
         hasil["url"]             = url
         hasil["judul"]           = judul
         hasil["teks"]            = artikel.get("teks", "")

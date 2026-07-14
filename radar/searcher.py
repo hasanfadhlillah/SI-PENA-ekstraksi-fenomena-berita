@@ -49,6 +49,46 @@ def _ekstrak_nama_domain(url: str) -> str:
     except Exception:
         return ""
 
+
+# ─── Filter Domain Tidak Relevan (kamus/ensiklopedia asing, marketplace luar negeri, dll) ──
+_DOMAIN_TIDAK_RELEVAN = [
+    # Kamus & ensiklopedia (bukan sumber "berita", tidak relevan untuk fenomena PDRB)
+    "wikipedia.org", "wiktionary.org", "dictionary.com", "cambridge.org",
+    "investopedia.com", "merriam-webster.com", "thefreedictionary.com",
+    "fandom.com",
+    # Marketplace/toko onderdil luar negeri (produk otomotif asing, bukan UMKM lokal Magelang)
+    "amazon.com", "ebay.com", "aliexpress.com", "alibaba.com",
+    "glowshiftdirect.com", "velocitypartsandperformance.com",
+    "urotuning.com", "maperformance.com", "autocityimports.com",
+    # Situs review/unduhan software AI generik luar negeri (false-positive dari nama produk AI)
+    "gizmodo.com", "mentoraia.com",
+]
+def _domain_tidak_relevan(url: str) -> str | None:
+    """Filter domain asing (kamus/marketplace) yang tidak relevan dengan PDRB Magelang tanpa menyentuh judul lokal."""
+    try:
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+    except Exception:
+        return None
+    for blok in _DOMAIN_TIDAK_RELEVAN:
+        if blok in domain:
+            return blok
+    return None
+def _buang_domain_tidak_relevan(list_artikel: list[dict], callback_log=None) -> list[dict]:
+    """Buang hasil pencarian dari domain kamus/ensiklopedia/marketplace luar negeri yang jelas tidak relevan."""
+    hasil = []
+    for item in list_artikel:
+        url = item.get("url", "")
+        domain_match = _domain_tidak_relevan(url)
+        if domain_match:
+            pesan = f"      [Filter] Buang domain tidak relevan ({domain_match}): {url[:60]}"
+            logger.debug(pesan)
+            if callback_log: callback_log(pesan)
+            continue
+        hasil.append(item)
+    return hasil
+
+
 def _resolve_google_news_url(google_url: str) -> str:
     """
     FUNGSI KUNCI: Decode/resolve URL redirect Google News RSS ke URL artikel asli.
@@ -117,11 +157,7 @@ def _parse_tanggal(tanggal_str: str) -> str:
 
 
 def _hitung_timelimit_ddgs(tanggal_selesai: str) -> str | None:
-    """
-    Menentukan parameter timelimit untuk ddgs.news().
-    Hanya mendukung "d", "w", "m". Jika >90 hari kembalikan None 
-    (jangan gunakan "y" karena invalid dan akan merusak filter pencarian DDG).
-    """
+    """Mengembalikan "d", "w", "m", atau None jika >90 hari (hindari "y" karena merusak filter DDG)."""
     try:
         dt_selesai = datetime.strptime(tanggal_selesai, "%Y-%m-%d")
     except Exception:
@@ -256,10 +292,7 @@ _KATA_FUNGSI_EN = {
 
 
 def _kemungkinan_berita_indonesia(judul: str) -> bool:
-    """
-    Heuristik cepat (BUKAN AI) untuk menebak apakah judul kemungkinan berita
-    berbahasa Indonesia, berdasarkan rasio kata fungsi ID vs EN.
-    """
+    """Heuristik non-AI untuk menebak bahasa judul berdasarkan rasio kata fungsi ID vs EN."""
     kata = re.findall(r"[a-zA-Z]+", judul.lower())
     if not kata:
         return True
@@ -294,14 +327,7 @@ def _cari_ddg_news_satu_keyword(
     timelimit: str | None,
     max_per_keyword: int,
 ) -> list[dict]:
-    """
-    Worker: cari 1 keyword di DDG News, dengan retry sekali saat timeout.
-    PENTING: fungsi ini jalan di THREAD WORKER (ThreadPoolExecutor).
-    JANGAN PERNAH memanggil callback_log (atau fungsi Streamlit apa pun) di sini —
-    Streamlit tidak thread-safe, dan pemanggilan st.* dari luar main thread bisa
-    merusak tampilan (elemen tab tercampur/salah taruh). Gunakan logger biasa saja
-    (logging Python aman dipanggil dari thread manapun).
-    """
+    """Worker pencari keyword DDG News dengan 1x retry; wajib pakai logging Python (bukan st.*) karena Streamlit tidak thread-safe."""
     time.sleep(random.uniform(0.2, 0.8))
     logger.debug(f"      [DDG News] '{keyword}'...")
     hasil_lokal = []
@@ -345,11 +371,7 @@ def cari_duckduckgo_news(
     max_per_keyword: int = 12,
     callback_log=None
 ) -> list[dict]:
-    """
-    Sumber 1: DuckDuckGo News. Gratis unlimited. Dicari PARALEL antar keyword.
-    callback_log HANYA dipanggil di sini (main thread) setelah future selesai,
-    TIDAK PERNAH di dalam worker.
-    """
+    """Scrape DDG News paralel antar-keyword; `callback_log` wajib dipanggil di main thread setelah future selesai."""
     hasil = []
     timelimit = _hitung_timelimit_ddgs(tanggal_selesai)
     if callback_log:
@@ -382,10 +404,7 @@ def _cari_google_rss_satu_keyword(
     tanggal_selesai: str,
     max_per_keyword: int,
 ) -> list[dict]:
-    """
-    Worker: cari 1 keyword di Google News RSS dengan filter tanggal after:/before:.
-    PENTING: sama seperti worker DDG di atas — TIDAK memanggil callback_log di sini.
-    """
+    """Worker Google News RSS dengan filter after/before; jangan panggil callback_log di dalam thread ini."""
     time.sleep(random.uniform(0.2, 0.8))
     logger.debug(f"      [Google RSS] '{keyword}' ({tanggal_mulai} s.d. {tanggal_selesai})...")
     headers = {
@@ -446,10 +465,7 @@ def cari_google_news_rss(
     max_per_keyword: int = 15,
     callback_log=None
 ) -> list[dict]:
-    """
-    Sumber 2: Google News RSS Feed. Dicari PARALEL antar keyword.
-    callback_log HANYA dipanggil di sini (main thread), tidak di dalam worker.
-    """
+    """Scrape Google News RSS paralel antar-keyword; `callback_log` wajib dipanggil di main thread."""
     hasil = []
     if callback_log:
         callback_log(f"      [Google RSS] Memindai {len(keywords)} keyword secara paralel...")
@@ -546,6 +562,7 @@ def cari_berita_multi_sumber(
     gabungan = _deduplikasi(hasil_ddg + hasil_rss)
     gabungan = _deduplikasi_judul(gabungan)
     gabungan = _buang_homepage(gabungan, callback_log=callback_log)
+    gabungan = _buang_domain_tidak_relevan(gabungan, callback_log=callback_log)
     gabungan = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
     if len(gabungan) < 10:   # <-- naik dari 5 -> 10
         pesan_fallback = f"⚠️ Gabungan DDG+RSS hanya {len(gabungan)} → aktifkan DDG Web..."
@@ -555,6 +572,7 @@ def cari_berita_multi_sumber(
         gabungan  = _deduplikasi(gabungan + hasil_web)
         gabungan  = _deduplikasi_judul(gabungan)
         gabungan  = _buang_homepage(gabungan, callback_log=callback_log)
+        gabungan  = _buang_domain_tidak_relevan(gabungan, callback_log=callback_log)
         gabungan  = _buang_bukan_bahasa_indonesia(gabungan, callback_log=callback_log)
     pesan_akhir = f"📦 Total unik artikel (filter URL, Judul Mirip, Homepage & Bahasa): {len(gabungan)}"
     logger.info(pesan_akhir)

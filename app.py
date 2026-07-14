@@ -41,7 +41,7 @@ from radar.backup import (
 )
 from scraper import scrape_berita
 from ai_engine import ekstrak_fenomena_ai
-from radar.logger_config import get_logger
+from radar.logger_config import get_logger, set_job_context
 logger = get_logger("app")
 
 auto_restore_dari_hf_dataset()
@@ -355,7 +355,7 @@ def _buat_excel_riwayat(df: pd.DataFrame) -> bytes:
     # Lebar kolom per nama kolom
     lebar = {
         "Judul Berita": 45, "Sumber Media": 20, "Kategori PDRB": 26, "Triwulan": 12,
-        "Skor AI": 10, "Status": 16, "Ditemukan": 20, "Diekstrak": 20, "Link Berita": 45,
+        "Skor AI": 10, "Wilayah Valid": 14, "Status": 16, "Ditemukan": 20, "Diekstrak": 20, "Link Berita": 45,
     }
     for col_idx, col_name in enumerate(df.columns, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = lebar.get(col_name, 18)
@@ -488,6 +488,13 @@ with st.sidebar:
     paksa_ulang = st.toggle("🔄 Proses Ulang Artikel Lama", value=False,
                             help="Jika diaktifkan, Radar akan men-scan ulang berita yang pernah ditolak/gagal.",
                             key="toggle_paksa_ulang")
+    if paksa_ulang:
+        st.caption(
+            "⚠️ Toggle ini membuat artikel lama di-scan ULANG di tiap level wilayah — kalau "
+            "dipakai bersama '✨ SEMUA KATEGORI (BATCH SCAN)', proses bisa memakan waktu JAUH "
+            "lebih lama (berjam-jam untuk 51 kategori). Gunakan dengan bijak, sebaiknya tidak "
+            "dikombinasikan dengan Batch Scan kecuali memang perlu."
+        )
     scan_semua  = st.toggle("🌐 Scan Semua Level Wilayah (khusus Batch Scan)", value=False,
                             help="Toggle ini HANYA berlaku untuk mode '✨ SEMUA KATEGORI (BATCH SCAN)'. "
                                  "Nonaktif (default) = Batch Scan berhenti begitu tiap kategori menemukan "
@@ -553,7 +560,7 @@ with st.sidebar:
             if st.button("♻️ Pulihkan Sekarang", key="btn_restore_keywords"):
                 berhasil, pesan = pulihkan_keywords_dari_upload(file_restore.read())
                 if berhasil:
-                    force_backup_ke_hf_dataset()
+                    force_backup_ke_hf_dataset(alasan="restore keywords.json")
                     st.success(pesan)
                     st.rerun()
                 else:
@@ -591,7 +598,7 @@ with st.sidebar:
                      disabled=(konfirmasi_reset != "HAPUS SEMUA"),
                      key="btn_reset_total"):
             reset_total_database()
-            berhasil_force_backup = force_backup_ke_hf_dataset()
+            berhasil_force_backup = force_backup_ke_hf_dataset(alasan="reset total")
             st.session_state.kategori_terpilih_antrean = "— Pilih Kategori —"
             if berhasil_force_backup:
                 st.success("✅ Reset total berhasil! Database kosong & backup HF Dataset sudah ditimpa dengan versi kosong.")
@@ -751,6 +758,7 @@ if tab_aktif == TAB_LABELS[0]:
     # BAGIAN A: JALANKAN RADAR — proses scan berjalan di BACKGROUND THREAD
     def _jalankan_scan_background(job_id, mode, **kwargs):
         """Dijalankan di thread terpisah. TIDAK BOLEH memanggil st.* apa pun."""
+        set_job_context(f"[job:{job_id[:8]}]")
         def cb_log(pesan: str):
             tambah_log(job_id, pesan)
         try:
@@ -1287,7 +1295,7 @@ elif tab_aktif == TAB_LABELS[1]:
                     st.session_state.json_final_siap = json_final_baru
                     st.session_state.target_url      = ""
                     st.session_state.hasil_ekstraksi = None
-                    berhasil_backup = force_backup_ke_hf_dataset()
+                    berhasil_backup = force_backup_ke_hf_dataset(alasan="finalisasi ekstraksi Tab 2")
                     st.toast("Hasil ekstraksi berhasil disimpan ke database!", icon="✅")
                     if berhasil_backup:
                         st.toast("💾 Otomatis ter-backup ke HF Dataset!", icon="☁️")
@@ -1400,6 +1408,7 @@ elif tab_aktif == TAB_LABELS[2]:
                 kategori_pdrb     AS "Kategori PDRB",
                 triwulan          AS "Triwulan",
                 skor_relevansi    AS "Skor AI",
+                wilayah_valid     AS "Wilayah Valid",
                 status            AS "Status",
                 tanggal_ditemukan AS "Ditemukan",
                 tanggal_diekstrak AS "Diekstrak",
@@ -1412,7 +1421,8 @@ elif tab_aktif == TAB_LABELS[2]:
     finally:
         if conn is not None:
             conn.close()
-
+    if not df_riwayat.empty and "Wilayah Valid" in df_riwayat.columns:
+        df_riwayat["Wilayah Valid"] = df_riwayat["Wilayah Valid"].map({1: "✅ Ya", 0: "❌ Tidak"}).fillna("—")
     if df_riwayat.empty:
         st.info("Belum ada riwayat artikel di database. Jalankan Radar terlebih dahulu.")
     else:
@@ -1630,6 +1640,18 @@ elif tab_aktif == TAB_LABELS[3]:
 elif tab_aktif == TAB_LABELS[4]:
     st.markdown("## ⚙️ Manajemen Keyword Pencarian")
     st.caption("Tambah, ubah, atau hapus keyword untuk setiap kategori PDRB. Perubahan langsung aktif tanpa restart.")
+    with st.expander("ℹ️ Kenapa cuma ada 3 kolom, padahal Radar punya 5 Level Wilayah?", expanded=False):
+        st.markdown("""
+        Di sini hanya ada 3 kolom keyword yang bisa diedit: **Kota Magelang**, **Jawa Tengah**, dan **Nasional**.
+        2 level lainnya yang dipakai Radar TIDAK punya keyword tersendiri, karena diturunkan otomatis:
+        - **Level 2 (Kabupaten Magelang)** — diturunkan dari kolom **Kota Magelang** dengan mengganti
+          frasa "kota magelang" menjadi "magelang" polos.
+        - **Level 3 (Wilayah Sekitar Magelang / Eks-Karesidenan Kedu)** — diturunkan dari kolom
+          **Kota Magelang** dengan merotasi kata "kota magelang" menjadi salah satu dari 4 kabupaten
+          tetangga (Temanggung, Wonosobo, Purworejo, Kebumen) secara bergantian per keyword.
+        Jadi kalau kamu mengedit keyword di kolom **Kota Magelang**, itu OTOMATIS ikut mengubah
+        pencarian di Level 2 dan Level 3 juga — tidak perlu diedit terpisah.
+        """)
     kw_data = _load_keywords()
     kat_edit = st.selectbox("Pilih Kategori untuk Diedit:", list(kw_data.keys()), key="selectbox_kat_edit")
     if kat_edit:
@@ -1655,7 +1677,7 @@ elif tab_aktif == TAB_LABELS[4]:
         if st.button("💾 Simpan Perubahan", type="primary", width='stretch', key="btn_simpan_keyword"):
             kw_data[kat_edit] = new_keywords
             _save_keywords(kw_data)
-            berhasil_backup = force_backup_ke_hf_dataset()
+            berhasil_backup = force_backup_ke_hf_dataset(alasan="simpan keyword Tab 5")
             st.success(f"✅ Keyword untuk '{kat_edit}' berhasil disimpan!")
             if berhasil_backup:
                 st.toast("💾 Otomatis ter-backup ke HF Dataset!", icon="☁️")
@@ -1674,7 +1696,7 @@ elif tab_aktif == TAB_LABELS[4]:
         if nama_baru not in kw_data:
             kw_data[nama_baru] = {"magelang": [], "jateng": [], "nasional": []}
             _save_keywords(kw_data)
-            berhasil_backup = force_backup_ke_hf_dataset()
+            berhasil_backup = force_backup_ke_hf_dataset(alasan="tambah kategori baru Tab 5")
             st.success(f"✅ Kategori '{nama_baru}' ditambahkan! Pilih dari dropdown di atas untuk mengisi keyword-nya.")
             if berhasil_backup:
                 st.toast("💾 Otomatis ter-backup ke HF Dataset!", icon="☁️")

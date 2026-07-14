@@ -4,8 +4,6 @@ Modul D: Parallel Scraping
 Mengambil isi artikel dari banyak URL sekaligus menggunakan ThreadPoolExecutor.
 Memanfaatkan scrape_berita() dari SI-FENO yang sudah ada.
 """
-
-from curses import meta
 import sys
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
