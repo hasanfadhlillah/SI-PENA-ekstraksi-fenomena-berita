@@ -6,6 +6,10 @@
 
 _"Menulis ulang fakta dari ribuan narasi berita."_
 
+**🌐 Akses Langsung Aplikasi:** [clips.id/SI-PENA](https://clips.id/SI-PENA)
+
+<br>
+
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.38%2B-ff4b4b?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20Mode-003b57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
@@ -47,6 +51,8 @@ Dalam proses penyusunan data **PDRB (Produk Domestik Regional Bruto)** Kota Mage
 Selama ini proses pencarian dilakukan **manual**: membuka mesin pencari, menelusuri satu per satu artikel, menentukan relevansi, menyalin data penting, lalu memformatnya ke formulir — memakan waktu berjam-jam per kategori.
 
 **SI-PENA hadir sebagai solusi**: mengotomasi seluruh alur kerja tersebut dengan bantuan kecerdasan buatan (AI), sehingga analis dapat fokus pada validasi dan analisis — bukan pencarian manual. Sistem tetap menerapkan prinsip **human-in-the-loop**: AI mengekstrak, staf yang memvalidasi dan memfinalisasi.
+
+🚀 **Coba dan jalankan SI-PENA secara langsung melalui:** [clips.id/SI-PENA](https://clips.id/SI-PENA)
 
 > 🎓 Dikembangkan sebagai bagian dari program Magang mahasiswa Fakultas Ilmu Komputer Universitas Brawijaya di **BPS Kota Magelang**.
 
