@@ -266,6 +266,7 @@ Platform ini bersifat _open-source internal_ dan terbuka untuk dikembangkan lebi
 ## 🏛️ Kontak
 
 **Badan Pusat Statistik — Kota Magelang**
+
 Jl. Jend. Gatot Soebroto No. 54-D, Jurangombo Selatan, Kec. Magelang Selatan, Kota Magelang, Jawa Tengah 56123
 
 🌐 [magelangkota.bps.go.id](https://magelangkota.bps.go.id)
