@@ -15,14 +15,10 @@ _"Menulis ulang fakta dari ribuan narasi berita."_
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20Mode-003b57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![HuggingFace](https://img.shields.io/badge/🤗%20Backup-HF%20Dataset-ffbf00?style=for-the-badge)](https://huggingface.co/)
 
-<br>
-
-<img src="logo_bps_magelang.png" alt="Logo BPS Kota Magelang" height="20"/>
+[![BPS Kota Magelang](https://img.shields.io/badge/BPS-Kota%20Magelang-003366?style=flat-square)]()
 [![Status](https://img.shields.io/badge/Status-Aktif%20Dikembangkan-brightgreen?style=flat-square)]()
 [![License](https://img.shields.io/badge/License-Internal%20Use-blue?style=flat-square)]()
 [![Maintained](https://img.shields.io/badge/Maintained-Yes-success?style=flat-square)]()
-
-<br>
 
 <img src="https://img.shields.io/badge/🎯%20Kategori%20PDRB-51-blue?style=flat-square" />
 <img src="https://img.shields.io/badge/🌍%20Level%20Fallback-5-blue?style=flat-square" />
