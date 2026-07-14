@@ -250,23 +250,13 @@ Dikembangkan oleh mahasiswa Fakultas Ilmu Komputer, Universitas Brawijaya, sebag
 
 <div align="center">
 
-|     |                                |
 | --- | ------------------------------ |
-| 👨‍💻  | **Muhammad Hasan Fadhlillah**  |
-| 👨‍💻  | **Muhammad Husain Fadhlillah** |
+| 👨‍💻 | **Muhammad Hasan Fadhlillah** |
+| 👨‍💻 | **Muhammad Husain Fadhlillah** |
 
 </div>
 
 Platform ini bersifat _open-source internal_ dan terbuka untuk dikembangkan lebih lanjut oleh tim BPS Kota Magelang maupun kontributor berikutnya.
-
----
-
-## 🏛️ Kontak
-
-**Badan Pusat Statistik — Kota Magelang**
-Jl. Jend. Gatot Soebroto No. 54-D, Jurangombo Selatan, Kec. Magelang Selatan, Kota Magelang, Jawa Tengah 56123
-
-🌐 [magelangkota.bps.go.id](https://magelangkota.bps.go.id)
 
 ---
 
