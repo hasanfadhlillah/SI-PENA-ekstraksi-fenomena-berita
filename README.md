@@ -192,27 +192,29 @@ Buka `http://localhost:8501` di browser.
 
 ## 📂 Struktur Proyek
 
+```text
 si-pena/
-├── app.py # Entry point Streamlit — 6 tab UI
-├── ai_engine.py # Ekstraksi 12 variabel BPS (dispatcher multi-model + retry koreksi)
-├── scraper.py # Scraper berlapis 3 (Jina/Direct/Wayback) + deteksi artikel berhalaman
+├── app.py                  # Entry point Streamlit — 6 tab UI
+├── ai_engine.py            # Ekstraksi 12 variabel BPS (dispatcher multi-model + retry koreksi)
+├── scraper.py              # Scraper berlapis 3 (Jina/Direct/Wayback) + deteksi artikel berhalaman
 ├── requirements.txt
-├── .env # (tidak di-commit — buat sendiri, lihat panduan di atas)
+├── .env                    # (tidak di-commit — buat sendiri, lihat panduan di atas)
 │
 └── radar/
-├── config.py # Konfigurasi bersama — single source of truth (51 kategori PDRB, dll)
-├── database.py # SQLite: riwayat_artikel, status_kategori, hasil_ekstraksi
-├── query_expander.py # Modul A — kategori PDRB → keyword pencarian jurnalistik
-├── searcher.py # Modul B — multi-source search engine (DDG News/RSS/Web)
-├── fetcher.py # Modul D — orkestrator parallel scraping (ThreadPoolExecutor)
-├── screener.py # Modul E — AI pre-screening & skoring relevansi
-├── fallback.py # Modul F — fallback 5 level wilayah
-├── pipeline.py # Orchestrator utama Modul A → F
-├── scan_manager.py # Background job registry (thread-safe, multi-sesi)
-├── backup.py # Auto-backup/restore ke Hugging Face Dataset
-├── model_stack.py # Katalog & urutan fallback 9 model AI
-├── logger_config.py # Logger terpusat (sipena.<modul>)
-└── keywords.json # Kamus keyword pencarian per kategori PDRB
+    ├── config.py           # Konfigurasi bersama — single source of truth (51 kategori PDRB, dll)
+    ├── database.py         # SQLite: riwayat_artikel, status_kategori, hasil_ekstraksi
+    ├── query_expander.py   # Modul A — kategori PDRB → keyword pencarian jurnalistik
+    ├── searcher.py         # Modul B — multi-source search engine (DDG News/RSS/Web)
+    ├── fetcher.py          # Modul D — orkestrator parallel scraping (ThreadPoolExecutor)
+    ├── screener.py         # Modul E — AI pre-screening & skoring relevansi
+    ├── fallback.py         # Modul F — fallback 5 level wilayah
+    ├── pipeline.py         # Orchestrator utama Modul A → F
+    ├── scan_manager.py     # Background job registry (thread-safe, multi-sesi)
+    ├── backup.py           # Auto-backup/restore ke Hugging Face Dataset
+    ├── model_stack.py      # Katalog & urutan fallback 9 model AI
+    ├── logger_config.py    # Logger terpusat (sipena.<modul>)
+    └── keywords.json       # Kamus keyword pencarian per kategori PDRB
+```
 
 ---
 
@@ -250,9 +252,10 @@ Dikembangkan oleh mahasiswa Fakultas Ilmu Komputer, Universitas Brawijaya, sebag
 
 <div align="center">
 
+|     |                                |
 | --- | ------------------------------ |
-| 👨‍💻 | **Muhammad Hasan Fadhlillah** |
-| 👨‍💻 | **Muhammad Husain Fadhlillah** |
+| 👨‍💻  | **Muhammad Hasan Fadhlillah**  |
+| 👨‍💻  | **Muhammad Husain Fadhlillah** |
 
 </div>
 
@@ -260,10 +263,19 @@ Platform ini bersifat _open-source internal_ dan terbuka untuk dikembangkan lebi
 
 ---
 
+## 🏛️ Kontak
+
+**Badan Pusat Statistik — Kota Magelang**
+Jl. Jend. Gatot Soebroto No. 54-D, Jurangombo Selatan, Kec. Magelang Selatan, Kota Magelang, Jawa Tengah 56123
+
+🌐 [magelangkota.bps.go.id](https://magelangkota.bps.go.id)
+
+---
+
 <div align="center">
 
 **SI-PENA v1.0**
 
-Made with ❤️ untuk BPS Kota Magelang
+Made with ❤️ for BPS Kota Magelang
 
 </div>
