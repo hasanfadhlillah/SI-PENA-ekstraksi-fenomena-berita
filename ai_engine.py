@@ -99,7 +99,7 @@ def _buat_prompt(data_artikel: dict, max_chars: int, kategori_pdrb: str = "") ->
         6. "lokasi_spesifik": Fokus area kejadian paling spesifik yang disebut di teks — kecamatan/pasar/desa di Magelang, ATAU jika artikel berskala provinsi/nasional, sebutkan lokasi paling spesifik yang memang ADA di teks (kota, provinsi, nama venue/gedung kegiatan, dsb).
         7. "intervensi_pemerintah": Sebutkan SEMUA kebijakan, program, mekanisme, atau tindakan pemerintah/instansi terkait fenomena tersebut — termasuk program rutin, RENCANA pembangunan/infrastruktur, PENGAJUAN anggaran ke pusat, maupun WACANA/KEKHAWATIRAN narasumber soal rencana kebijakan tertentu (meski belum final) — tulis dengan jelas kalau itu masih wacana/rencana.
         8. "periode_kejadian": Rentang waktu/tanggal relevan — termasuk tanggal pencatatan data, tanggal pelaksanaan kegiatan, proyeksi ke depan, atau perbandingan historis. Jika benar-benar tidak ada rentang waktu spesifik di isi teks, gunakan tanggal publikasi artikel ("Tanggal Web" di atas) sebagai upaya terakhir sebelum menjawab "Tidak ada informasi".
-        9. "kata_kunci": 3-5 hashtags untuk mempermudah pencarian (contoh: #Beras #GagalPanen).
+        9. "kata_kunci": 3 hashtags untuk mempermudah pencarian (contoh: #Beras #GagalPanen).
         10. "sentimen_dampak": Pilih salah satu: Positif / Negatif / Netral.
         11. "kategori_perbandingan": Pilih "y-on-y" (dibanding tahun sebelumnya), "q-to-q" (kuartal/bulan sebelumnya), "harga" (fluktuasi harian/mingguan), atau "Tidak ada informasi" (jika tidak ada perbandingan waktu sama sekali).
         """
@@ -122,7 +122,7 @@ def _buat_prompt(data_artikel: dict, max_chars: int, kategori_pdrb: str = "") ->
         7. "lokasi_spesifik": Fokus area kejadian paling spesifik yang disebut di teks.
         8. "intervensi_pemerintah": Sebutkan SEMUA kebijakan, program, mekanisme, atau tindakan pemerintah/instansi terkait fenomena tersebut — termasuk program rutin, RENCANA pembangunan/infrastruktur, PENGAJUAN anggaran ke pusat, maupun WACANA/KEKHAWATIRAN narasumber soal rencana kebijakan tertentu (meski belum final).
         9. "periode_kejadian": Rentang waktu/tanggal relevan. Jika benar-benar tidak ada rentang waktu spesifik, gunakan tanggal publikasi artikel sebagai upaya terakhir.
-        10. "kata_kunci": 3-5 hashtags untuk mempermudah pencarian.
+        10. "kata_kunci": 3 hashtags untuk mempermudah pencarian.
         11. "sentimen_dampak": Pilih salah satu: Positif / Negatif / Netral.
         12. "kategori_perbandingan": Pilih "y-on-y", "q-to-q", "harga", atau "Tidak ada informasi".
         """
@@ -170,7 +170,7 @@ def _buat_prompt_koreksi(data_artikel: dict, max_chars: int, field_kosong: list[
         "judul_dan_tanggal": "judul_dan_tanggal (kombinasi judul asli & tanggal publish artikel)",
         "sumber_dan_link":   "sumber_dan_link (nama media & URL berita)",
         "ringkasan_fenomena":"ringkasan_fenomena (4-5 kalimat inti fenomena di artikel)",
-        "kata_kunci":        "kata_kunci (3-5 hashtag relevan)",
+        "kata_kunci":        "kata_kunci (3 hashtag relevan)",
         "sentimen_dampak":   "sentimen_dampak (pilih persis: Positif / Negatif / Netral)",
         "data_angka":        "data_angka (SEMUA nilai angka: harga Rp, persentase %, berat kg/ton, dsb -- SISIR ULANG teks kalimat demi kalimat dari awal sampai akhir, jangan lewatkan satupun)",
         "kutipan_tokoh":     "kutipan_tokoh (SEMUA kalimat kutipan langsung bertanda kutip \"...\" atau didahului/diikuti kata ujarnya/katanya/ucapnya/imbuhnya dsb -- salin PERSIS kalimatnya, sertakan nama & jabatan narasumber jika disebutkan)",

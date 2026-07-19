@@ -46,12 +46,6 @@ AI_MODEL_CATALOG = [
         "max_chars" : 8000,
     },
     {
-        "nama"      : "Cerebras — Zai GLM 4.7",
-        "provider"  : "cerebras",
-        "model_id"  : "zai-glm-4.7",
-        "max_chars" : 8000,
-    },
-    {
         "nama"      : "Cerebras — Gemma 4 31B",
         "provider"  : "cerebras",
         "model_id"  : "gemma-4-31b",

@@ -22,7 +22,7 @@ _"Menulis ulang fakta dari ribuan narasi berita."_
 
 <img src="https://img.shields.io/badge/🎯%20Kategori%20PDRB-51-blue?style=flat-square" />
 <img src="https://img.shields.io/badge/🌍%20Level%20Fallback-5-blue?style=flat-square" />
-<img src="https://img.shields.io/badge/🤖%20Model%20AI-9-blue?style=flat-square" />
+<img src="https://img.shields.io/badge/🤖%20Model%20AI-8-blue?style=flat-square" />
 <img src="https://img.shields.io/badge/📝%20Variabel%20Ekstraksi-12-blue?style=flat-square" />
 
 </div>
@@ -67,7 +67,7 @@ Selama ini proses pencarian dilakukan **manual**: membuka mesin pencari, menelus
 | 🗄️ **History & Download Massal** | Riwayat pencarian & hasil ekstraksi tersimpan permanen di SQLite, bisa diunduh sebagai **Excel** (berformat rapi siap cetak), **CSV**, atau **JSON** — satu per satu maupun sekaligus massal.                                                                |
 | 📈 **Dashboard Analisis**        | Visualisasi interaktif (Altair): tren penemuan berita harian, distribusi status antrean, dan Top 10 sektor PDRB paling banyak diberitakan.                                                                                                                   |
 | ⚙️ **Manajemen Keyword**         | Edit, tambah, atau hapus keyword pencarian per kategori PDRB langsung dari UI Streamlit — tanpa sentuh kode, tanpa restart aplikasi.                                                                                                                         |
-| 🤖 **Multi-AI Auto-Fallback**    | Stack **9 model AI** (Groq, Google Gemini/Gemma, Cerebras, Mistral) dengan _pooling_ multi-API-key per provider. Kalau satu model/key kena limit atau error, sistem otomatis pindah ke model cadangan berikutnya.                                            |
+| 🤖 **Multi-AI Auto-Fallback**    | Stack **8 model AI** (Groq, Google Gemini/Gemma, Cerebras, Mistral) dengan _pooling_ multi-API-key per provider. Kalau satu model/key kena limit atau error, sistem otomatis pindah ke model cadangan berikutnya.                                            |
 | 🔀 **Multi-Sesi Aman**           | Sampai 3 staf bisa scan **bersamaan** tanpa bentrok data, lewat sistem kunci per-kategori + kuota global + live-log yang bisa dipantau lintas sesi.                                                                                                          |
 | ☁️ **Auto-Backup Zero-Cost**     | Karena dideploy di tier gratis (storage ephemeral), seluruh data (riwayat artikel, hasil ekstraksi, keyword) otomatis ter-_backup_ ke **Hugging Face Dataset** setiap ada perubahan penting, dan otomatis di-_restore_ saat Space baru saja restart.         |
 
