@@ -211,7 +211,7 @@ si-pena/
     ├── pipeline.py         # Orchestrator utama Modul A → F
     ├── scan_manager.py     # Background job registry (thread-safe, multi-sesi)
     ├── backup.py           # Auto-backup/restore ke Hugging Face Dataset
-    ├── model_stack.py      # Katalog & urutan fallback 9 model AI
+    ├── model_stack.py      # Katalog & urutan fallback 8 model AI
     ├── logger_config.py    # Logger terpusat (sipena.<modul>)
     └── keywords.json       # Kamus keyword pencarian per kategori PDRB
 ```
